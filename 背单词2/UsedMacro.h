@@ -42,6 +42,9 @@
 #define RANGE_OF(x, llim, hlim) ((x)<(llim)? (llim): (x)>(hlim)? (hlim):(x))//取范围
 #define RANGE_LIMIT(x, llim, hlim) ((x) = RANGE_OF(x, llim, hlim))//设置范围
 
+#define IS_IN_RANGE(x, llim, hlim) ((x)>=(llim) && (x)<=(hlim))//判断是否在范围内
+#define IS_IN_ITER_RANGE(x, st, ed) ((x)>=(st) && (x)<(ed))//判断是否在范围内，以迭代器标准
+
 #define SQUARE_OF(x) ((x)*(x))//求平方
 #define SQUARE_TO(x) ((x) = SQUARE_OF(x))//赋值平方
 
@@ -63,8 +66,10 @@
 #define O_(id) PRE_SYMBOL(id, o_)//添加原始前缀
 #define O_INIT(id) id(O_(id))//使用前缀版本初始化
 #define O_INIT_MOVE(id) id(std::move(O_(id)))//使用前缀版本移动初始化
+#define O_INIT_FORWARD(id, Ty) id(std::forward<Ty>(O_(id)))//使用前缀版本转发初始化
 #define O_ASSIGN(id) (id = O_(id))//使用前缀版本赋值
 #define O_ASSING_MOVE(id) (id = std::move(O_(id)))//使用前缀版本移动赋值
+#define O_ASSIGN_FORWARD(id, Ty) (id = std::forward<Ty>(O_(id)))//使用前缀版本转发初始化
 
 #define OTHER_INIT(other, mem) mem((other).mem)//使用类成员初始化
 #define OTHER_INIT_MOVE(other, mem) mem(std::move((other).mem))//使用类成员移动初始化
@@ -74,29 +79,27 @@
 
 
 //类操作
-#define COPY_ASSIGN(Type, other) {\
+#define CLASS_ASSIGN(Type, other) {\
 	if(this!=&(other)) {\
 		this->~Type();\
 		new(this) Type(other);\
-	}\
-	return *this;}//拷贝赋值
+	}}//拷贝赋值，注意会覆盖虚表
 
-#define MOVE_ASSIGN(Type, other) {\
+#define CLASS_ASSIGN_MOVE(Type, other) {\
 	if(this!=&(other)) {\
 		this->~Type();\
 		new(this) Type(std::move(other));\
-	}\
-	return *this;}//移动赋值
+	}}//移动赋值，注意会覆盖虚表
 
 #define TEMPLATE_ASSIGN(Type, Typename, arg) {\
 	this->~Type();\
 	new(this) Type(std::forward<Typename>(arg));\
-	return *this;}//模板赋值，不能自赋值
+	}//模板赋值，自赋值不安全，注意会覆盖虚表
 
 #define TEMPLATE_PACKET_ASSIGN(Type, Typenames, args) {\
 	this->~Type();\
 	new(this) Type(std::forward<Typenames>(args)...);\
-	return *this;}//模板包赋值，不能自赋值
+	}//模板包赋值，自赋值不安全，注意会覆盖虚表
 
 
 

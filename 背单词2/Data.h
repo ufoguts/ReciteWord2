@@ -2,9 +2,11 @@
 
 
 /*
-改行输入
-差导出单词
 改动业务逻辑框架
+加入undo功能
+格式化加入存储表名
+改更新函数的存储表名依赖
+改词汇表搜索功能
 */
 
 //文件夹名
@@ -14,13 +16,20 @@
 #define INPUT_DIR_NAME "input"//输入文件夹
 #define INPUT_DIR_PATH "./" INPUT_DIR_NAME//输入路径
 #define INPUT_FILE_EXT ".txt"//数据后缀名
+#define OUPPUT_DIR_NAME "output"//输出文件夹
+#define OUPPUT_DIR_PATH "./" OUPPUT_DIR_NAME//输出路径
+#define OUPPUT_FILE_EXT ".txt"//数据后缀名
 
 //特殊单词表
-#define NOW_LIST "now"//前置单词表
-#define TEMP_LIST "temp"//缓存单词表
+#define NOW_LIST_NAME "now"//前置单词表
+#define TEMP_LIST_NAME "temp"//缓存单词表
 
-#define SHOW_DEFAULT_NUM 25//预览默认个数
+#define SHOW_DEFAULT_NUM 20//预览默认个数
 #define INPUT_SEGMENT_SIZE 4096//认为导入一个单词最大长度
+
+#define TAB_BLANK "     "//统一使用的空白符，5个空格
+#define LONG_TAB_BLANK "        "//统一使用的双倍空白符，8个空格
+#define OUT_BLANK ":    "//统一使用指出的空白符，冒号和4和空格
 
 
 //单词
@@ -31,8 +40,8 @@ struct Word
 public:
 	Word() =
 		default;
-	Word(const string &O_(english), const string &O_(chinese)= ""):
-		O_INIT(english), O_INIT(chinese)
+	Word(string O_(english), string O_(chinese)= ""):
+		O_INIT_MOVE(english), O_INIT_MOVE(chinese)
 	{
 	}
 };
@@ -51,6 +60,40 @@ BinReadFile &operator >>(BinReadFile &brf, Word &word)
 BinWriteFile &operator <<(BinWriteFile &bwf, const Word &word)
 {
 	return bwf <<word.english <<word.chinese;
+}
+
+using ListType = map<string, vector<Word>>;//单词表类型
+using ListNameSet = set<string>;//单词表名记录集合
+
+
+//单词位置索引类
+struct ItemIndex
+{
+	ListType::iterator itList;//词表迭代器
+	int idx;//词表内位置
+	ItemIndex()
+		= default;
+	ItemIndex(ListType::iterator O_(itList), int O_(idx)):
+		O_INIT_MOVE(itList), O_INIT(idx)
+	{
+	}
+	//访问函数
+	Word &operator *() const
+	{
+		return itList->second[idx];
+	}
+	Word *operator ->() const
+	{
+		return &itList->second[idx];
+	}
+};
+
+
+template<typename TyIt>
+inline void ItemIndexToListNameSet(ListNameSet &listName, TyIt st, TyIt ed)
+{
+	for(; st!=ed; ++st)
+		listName.insert(st->itList->first);
 }
 
 
@@ -86,6 +129,19 @@ inline string StrToForm(const string &str)
 		strRes <<ch;
 	}
 	return strRes;
+}
+
+
+inline bool CanListAddWord(vector<Word> &list, const Word &word)
+{
+	return std::find(list.begin(), list.end(), word)==list.end();
+}
+inline bool ListAddWord(vector<Word> &list, const Word &word)
+{
+	if(!CanListAddWord(list, word))
+		return false;
+	list.push_back(word);
+	return true;
 }
 
 
@@ -136,7 +192,7 @@ inline bool CinGetRegexIndex(regex &rgx, int &index)
 	while(true) {
 		if(!(cin >>index >>endl))
 			return false;
-		if(index<0 || SafeLTE(index, rgx.mark_count())) {
+		if(index<0 || IntLTE(index, rgx.mark_count())) {
 			cout <<"编号不符合范围，重新输入: \n";
 			continue;
 		}
@@ -144,5 +200,103 @@ inline bool CinGetRegexIndex(regex &rgx, int &index)
 	}
 	return true;
 }
+
+
+//打印单词辅助类
+class PrintWord
+{
+public:
+	const Word &ref;
+public:
+	explicit PrintWord(const Word &O_(ref)):
+		O_INIT(ref)
+	{
+	}
+};
+ostream &operator <<(ostream &os, const PrintWord &word)
+{
+	os <<word.ref.english <<LONG_TAB_BLANK <<word.ref.chinese;
+	return os;
+}
+
+//打印序号和单词辅助类
+class PrintIndexWord
+{
+public:
+	const vector<Word> &ref;
+	int idx;
+public:
+	explicit PrintIndexWord(const vector<Word> &O_(ref), int O_(idx)):
+		O_INIT(ref), O_INIT(idx)
+	{
+	}
+};
+ostream &operator <<(ostream &os, const PrintIndexWord &word)
+{
+	os <<(word.idx+1) <<OUT_BLANK <<PrintWord(word.ref[word.idx]);
+	return os;
+}
+
+//打印表名，序号和单词辅助类
+class PrintListIndexWord
+{
+public:
+	ListType::iterator ref;
+	int idx;
+public:
+	explicit PrintListIndexWord(ListType::iterator O_(ref), int O_(idx))
+		:
+		O_INIT_MOVE(ref), O_INIT(idx)
+	{
+	}
+	explicit PrintListIndexWord(const ItemIndex &o_index):
+		ref(o_index.itList), idx(o_index.idx)
+	{
+	}
+};
+ostream &operator <<(ostream &os, const PrintListIndexWord &word)
+{
+	os <<word.ref->first <<" - " <<PrintIndexWord(word.ref->second, word.idx);
+	return os;
+}
+
+//打印项索引
+class PrintItemIndex
+{
+public:
+	const ItemIndex &ref;
+public:
+	explicit PrintItemIndex(const ItemIndex &O_(ref)):
+		O_INIT(ref)
+	{
+	}
+};
+ostream &operator <<(ostream &os, const PrintItemIndex &word)
+{
+	os <<"(" <<word.ref.itList->first <<"," <<word.ref.idx+1 <<")";
+	return os;
+}
+
+//打印项索引向量
+class PrintItemIndexVector
+{
+public:
+	const vector<ItemIndex> &ref;
+public:
+	explicit PrintItemIndexVector(const vector<ItemIndex> &O_(ref)):
+		O_INIT(ref)
+	{
+	}
+};
+ostream &operator <<(ostream &os, const PrintItemIndexVector &word)
+{
+	for(int i=0; i!=word.ref.size(); ++i) {
+		os <<PrintItemIndex(word.ref[i]);
+		if(i!=word.ref.size()-1)
+			os <<",";
+	}
+	return os;
+}
+
 
 

@@ -195,3 +195,4 @@ namespace filesystem = boost::filesystem;
 #include "IoOperator.h"
 #include "TypeExtend.h"
 #include "UsedMacro.h"
+#include "StruAndAlgo.h"

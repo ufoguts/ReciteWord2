@@ -156,6 +156,7 @@
     <ClInclude Include="Data.h" />
     <ClInclude Include="IoOperator.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="StruAndAlgo.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="TypeExtend.h" />
     <ClInclude Include="UsedMacro.h" />
