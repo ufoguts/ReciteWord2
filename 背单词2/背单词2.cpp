@@ -93,7 +93,7 @@ void ChoiceChange(string &curName, ListNameSet &setSave)
 	string name;
 	if(!CinGetLineFirstString(name))
 		return;
-	std::replace_if(name.begin(), name.end(), CharIsNotBroadId, '_');
+	std::replace_if(name.begin(), name.end(), IsNotBroadIdChar, '_');
 	//若不存在则判断创建
 	if(g_mapWord.find(name)==g_mapWord.end()) {
 		cout <<"\"" <<name <<"\"不存在，输入非空白创建: ";
@@ -184,15 +184,18 @@ void ChoiceDelete(string &curName, ListNameSet &setSave)
 	string retName = curName;
 	while(true) {
 		if(curList.empty()) {
-			cout <<"单词表为空\n";
-			if(curName==NOW_LIST_NAME || curName==TEMP_LIST_NAME)
+			cout <<"单词表为空";
+			if(curName==NOW_LIST_NAME || curName==TEMP_LIST_NAME) {
+				cin >>endl;
 				break;
-			cout <<"是否删除单词表？非空白代表删除: ";
+			}
+			cout <<"\n是否删除单词表？非空白代表删除: ";
 			if(CinGetLineJudgeBlank()) {
 				g_mapWord.erase(curName);
 				bChange = true;
-				cout <<"删除单词表\n";
+				cout <<"删除单词表";
 				retName = NOW_LIST_NAME;
+				cin >>endl;
 			}
 			break;
 		}
@@ -237,53 +240,55 @@ void ChoiceDelete(string &curName, ListNameSet &setSave)
 //更新词汇表单词
 void ChoiceUpdata(const string &curName, ListNameSet &setSave)
 {
-	cout <<"输入搜索单词，空则返回: ";
-	Word target;
-	if(!CinGetLineJudgeBlank(&target.english))
-		return;
-	vector<ItemIndex> vecIndex;//查找结果类
-	//查找单词
-	for(auto itList=g_mapWord.begin(); itList!=g_mapWord.end(); ++itList) {
-		auto it = std::find(itList->second.begin(), itList->second.end(), target);
-		if(it!=itList->second.end()) {
-			vecIndex.emplace_back(itList, it-itList->second.begin());
+	while(true) {
+		cout <<"输入搜索单词，空则返回: ";
+		Word target;
+		if(!CinGetLineJudgeBlank(&target.english))
+			return;
+		vector<ItemIndex> vecIndex;//查找结果类
+		//查找单词
+		for(auto itList=g_mapWord.begin(); itList!=g_mapWord.end(); ++itList) {
+			auto it = std::find(itList->second.begin(), itList->second.end(), target);
+			if(it!=itList->second.end()) {
+				vecIndex.emplace_back(itList, it-itList->second.begin());
+			}
 		}
-	}
-	if(vecIndex.size()==0) {
-		cout <<"未找到";
-		cin >>endl;
-		return;
-	}
-	cout <<"结果为：\n";
-	for(auto &idx: vecIndex) {
-		cout <<PrintListIndexWord(idx) <<"\n";
-	}
-	//请求输入
-	cout <<"输入英文，为空则不变: ";
-	string tmp;
-	if(CinGetLineJudgeBlank(&tmp))
-		target.english = tmp;
-	cout <<"输入中文，为空则返回: ";
-	if(!CinGetLineJudgeBlank(&target.chinese)) {
-		return;
-	}
-	//改变单词
-	int num = 0;
-	for(auto &idx: vecIndex) {
-		auto itSt = idx.itList->second.begin(),
-			itMd = idx.itList->second.begin()+idx.idx,
-			itEd = idx.itList->second.end();
-		if(std::find(itSt, itMd, target)!=itMd || std::find(itMd+1, itEd, target)!=itEd)
-		{
-			cout <<idx.itList->first <<"表单词重复\n";
+		if(vecIndex.size()==0) {
+			cout <<"未找到";
+			cin >>endl;
 			continue;
 		}
-		*idx = target;
-		++ num;
-		setSave.insert(idx.itList->first);
+		cout <<"结果为：\n";
+		for(auto &idx: vecIndex) {
+			cout <<PrintListIndexWord(idx) <<"\n";
+		}
+		//请求输入
+		cout <<"输入英文，为空则不变: ";
+		string tmp;
+		if(CinGetLineJudgeBlank(&tmp))
+			target.english = tmp;
+		cout <<"输入中文，为空则取消: ";
+		if(!CinGetLineJudgeBlank(&target.chinese)) {
+			continue;
+		}
+		//改变单词
+		int num = 0;
+		for(auto &idx: vecIndex) {
+			auto itSt = idx.itList->second.begin(),
+				itMd = idx.itList->second.begin()+idx.idx,
+				itEd = idx.itList->second.end();
+			if(std::find(itSt, itMd, target)!=itMd || std::find(itMd+1, itEd, target)!=itEd)
+			{
+				cout <<idx.itList->first <<"表单词重复\n";
+				continue;
+			}
+			*idx = target;
+			++ num;
+			setSave.insert(idx.itList->first);
+		}
+		cout <<"修改" <<num <<"完成";
+		cin >>endl;
 	}
-	cout <<"修改" <<num <<"完成";
-	cin >>endl;
 }
 
 
@@ -307,7 +312,7 @@ void ChoiceRecite(const string &curName, ListNameSet &setSave)
 	for(int i=0; i!=curList.size(); ++i)
 		vecPrb[i] = FastPower(base, vecFlag[i]);
 	int sumFlag = curList.size()*initFlag;
-	cout <<"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
+	cout <<CLEAR_ENTER;
 	cout <<"输入d减少标记，标记为0则删除单词，输入s保持标记，输入+导入到temp\n"
 		<<"s和d不能同时出现，不输入则恢复一半标记数，其余返回";
 	cin >>endl;
@@ -371,7 +376,7 @@ void ChoiceRecite(const string &curName, ListNameSet &setSave)
 		}
 		if(!option.empty() && !bDel && !bTemp &&!bSta)
 			break;
-		cout <<"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
+		cout <<CLEAR_ENTER;
 	}
 	if(bChange)
 		setSave.insert(curName);
@@ -393,7 +398,7 @@ void ChoiceCheck(const string &curName, ListNameSet &setSave)
 	}
 	bool bHasTemp = false;//是否已经导入过temp
 	auto &wordsTemp = g_mapWord.at(TEMP_LIST_NAME);//temp词汇表
-	cout <<"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
+	cout <<CLEAR_ENTER;
 	cout <<"回车下一步，输入l(字母)导入" <<inListName <<"，输入+导入到temp，其余返回";
 	cin >>endl;
 	cout <<"\n";
@@ -428,8 +433,8 @@ void ChoiceCheck(const string &curName, ListNameSet &setSave)
 		}
 		//若导入temp选项
 		if(bTemp) {
-			if(inListName==TEMP_LIST_NAME)
-				cout <<"导入词库与temp为同一个，导入temp没有意义\n";
+			if(inListName==TEMP_LIST_NAME || curName==TEMP_LIST_NAME)
+				cout <<"导入导出词库与temp为同一个，导入temp没有意义\n";
 			else {
 				if(!bHasTemp) {
 					wordsTemp.clear();
@@ -537,19 +542,19 @@ void ChoiceCopy(const string &curName, ListNameSet &setSave)
 		cout <<"导入来源词库共有" <<size <<"词\n"
 			<<"输入导入的起始和终止序号，不合法则选择全部: ";
 		while(true) {
-			if(cin >>leadFromSt >>leadFromEd >>endl) {
-				-- leadFromSt;
-				if(IS_IN_RANGE(leadFromSt, 0, size-1)
-					|| IS_IN_RANGE(leadFromEd, leadFromSt+1, size))
-				{
-					bLeadFrom = true;
-					break;
-				}
-				else
-					cout <<"序号错误，重新输入: \n";
+			if(!(cin >>leadFromSt >>leadFromEd >>endl)) {
+				leadFromSt = 1;
+				leadFromEd = size;
+			}
+			-- leadFromSt;
+			if(IS_IN_RANGE(leadFromSt, 0, size-1)
+				|| IS_IN_RANGE(leadFromEd, leadFromSt+1, size))
+			{
+				bLeadFrom = true;
+				break;
 			}
 			else
-				return;
+				cout <<"序号错误，重新输入: \n";
 		}
 	}
 	//开始寻找
@@ -588,8 +593,7 @@ void ChoiceSearch(const string &curName, ListNameSet &setSave)
 	cout <<"找到匹配的词汇表：\n";
 	for(auto &ref: vecListSearch)
 		cout <<ref->first <<"\n";
-	cout <<"共" <<vecListSearch.size() <<"个";
-	cin >>endl;
+	cout <<"共" <<vecListSearch.size() <<"个\n";
 	cout <<"输入搜索单词正则，全词匹配，空则返回: \n";
 	string substr;
 	regex rgxWord;
@@ -665,9 +669,9 @@ void ChoiceRegularize(const string &curName, ListNameSet &setSave)
 		return ret;
 	};
 	auto lbdDropBlank = [](const string &str)-> string {//去除字符串的空白符，若没有则返回空
-		auto itSt = std::find_if(str.begin(), str.end(), CharIsNotBlank);
+		auto itSt = std::find_if(str.begin(), str.end(), IsNotBlankChar);
 		auto ritEd = std::find_if(str.rbegin(), string::const_reverse_iterator(itSt),
-			CharIsNotBlank);
+			IsNotBlankChar);
 		if(itSt==str.begin() && ritEd.base()==str.end())
 			return string();
 		else
@@ -800,7 +804,7 @@ void ChoiceInput(const string &curName, ListNameSet &setSave)
 				//打开文件并更新
 				ifstream ifs(file.path().string());
 				string name = file.path().stem().string();
-				std::replace_if(name.begin(), name.end(), CharIsNotBroadId, '_');
+				std::replace_if(name.begin(), name.end(), IsNotBroadIdChar, '_');
 				++ cntList;
 				if(g_mapWord.find(name)!=g_mapWord.end())
 					++ cntWrongList;
@@ -811,17 +815,17 @@ void ChoiceInput(const string &curName, ListNameSet &setSave)
 				while(std::getline(ifs, str)) {
 					Word word;
 					//找有效字符头
-					auto itSt = std::find_if_not(str.begin(), str.end(), CharIsBlank);//a
+					auto itSt = std::find_if_not(str.begin(), str.end(), IsBlankChar);//a
 					//判断注释
 					if(itSt==str.end() || *itSt=='#' || *itSt==';')
 						continue;
 					//找字段尾，不要求后续
-					auto itGap = std::find_if(itSt+1, str.end(), CharIsBlank);//\t2
+					auto itGap = std::find_if(itSt+1, str.end(), IsBlankChar);//\t2
 					word.english.assign(itSt, itGap);
 					//找后续词
-					auto itWordSt = std::find_if_not(itGap, str.end(), CharIsBlank);//d
+					auto itWordSt = std::find_if_not(itGap, str.end(), IsBlankChar);//d
 					auto ritWordEd = std::find_if_not(str.rbegin(),
-						std::string::reverse_iterator(itWordSt), CharIsBlank);//i
+						std::string::reverse_iterator(itWordSt), IsBlankChar);//i
 					//存储值，可能为空
 					if(itWordSt!=str.end() && itWordSt<ritWordEd.base())
 						word.chinese.assign(itWordSt, ritWordEd.base());
@@ -875,7 +879,7 @@ void ChoiceAdInput(const string &curName, ListNameSet &setSave)
 			//打开文件并更新
 			ifstream ifs(file.path().string());
 			string name = file.path().stem().string();
-			std::replace_if(name.begin(), name.end(), CharIsNotBroadId, '_');
+			std::replace_if(name.begin(), name.end(), IsNotBroadIdChar, '_');
 			++ cntList;
 			if(g_mapWord.find(name)!=g_mapWord.end())
 				++ cntWrongList;
@@ -961,6 +965,261 @@ void ChoiceOutput(const string &curName, ListNameSet &setSave)
 }
 
 
+//词汇表导出到文件
+void ChoicePlan(const string &curName, ListNameSet &setSave)
+{
+	const string c_flagData = "#date";//日期标志
+	const string c_flagGroup = "#group";//每组标志
+	const string c_flagBlank = "#blank";//空白标志
+	const vector<int> vecPeriod = {0, 1, 3, 7, 14, 29};
+	cout <<"生成背单词时间表用，每天计划背的单词在第";
+	for(int i: vecPeriod)
+		cout <<i <<",";
+	cout <<"天后复习\n"
+		<<"将输入文件放在 \"" INPUT_DIR_PATH "\" 目录下\n"
+		<<"文件每行代表一个输入项目，可以为如下几种:\n"
+		<<"1,\"(单词表名) [(开始编号)] [(结束编号)]\" 表示要背的一个单词表系列\n"
+		<<"\t如\"lis 1 3\"表示lis1、lis2、lis3一共3个表\n"
+		<<"\t开始编号和结束编号可省略表示只有一个表\n"
+		<<"2,\"" <<c_flagData <<" (日期)\" 表示下面的表从给出的日期开始\n"
+		<<"\t日期表示如格式 \"2018-1-23\" ，初始默认使用运行当天的日期\n"
+		<<"3,\"" <<c_flagGroup <<" (数量)\" 表示下面每天计划背诵多少个单词表\n"
+		<<"\t初始默认为1，给出这行意味着分隔上下文单词表\n"
+		<<"\t即接下来的单词表一定从新的一天开始背\n"
+		<<"4,\"" <<c_flagBlank <<" [(数量)]\" 表示接下来空出多少天没有背诵计划\n"
+		<<"\t不填数量或填0表示单纯的分隔上下文单词表\n";
+	cout <<"输入输入txt文件名，不包括后缀名，空则返回: ";
+	string strFileName;
+	if(!CinGetLineFirstString(strFileName))
+		return;
+	ifstream ifs(INPUT_DIR_PREFIX+strFileName+INPUT_FILE_EXT);
+	if(!ifs.is_open()) {
+		cout <<"未找到输入文件";
+		cin >>endl;
+		return;
+	}
+	cout <<"输入输出txt文件名，不包括后缀名，空则返回: ";
+	if(!CinGetLineFirstString(strFileName))
+		return;
+	ofstream ofs(OUPPUT_DIR_PREFIX+strFileName+OUPPUT_FILE_EXT);
+	if(!ofs.is_open()) {
+		cout <<"输出文件打开失败";
+		cin >>endl;
+		return;
+	}
+	vector<pair<time_t, string>> vecList;//存放单词表
+	int groupSize = 1;//每天背诵数
+	int nowSize = 0;//当前已有背诵数
+	int listCnt = 0;//单词表数
+	auto nowTime = std::time(nullptr);//当前时间点
+	time_t timeOneDay = 60*60*24;
+	bool bInitDate = true;//是否是默认时间
+	//将时间对其到天
+	auto tmStru = TimeNumToTimeStru(nowTime);
+	tmStru.tm_sec = tmStru.tm_min = tmStru.tm_hour = 0;
+	tmStru.tm_isdst = 0;
+	nowTime = TimeStruToTimeNum(tmStru);
+	//输入循环
+	string strLine;
+	for(int lineIdx=0; std::getline(ifs, strLine); ++lineIdx) {
+		istringstream iss(std::move(strLine));
+		string name, strTmp;
+		int num1, num2, num3;
+		char ch1, ch2;
+		if(!(iss >>name))
+			continue;
+		//若改变日期
+		if(name==c_flagData) {
+			if(!(iss >>num1 >>ch1 >>num2 >>ch2 >>num3)
+				|| ch1!='-' || ch2!='-')
+			{
+				cout <<"warning in line " <<lineIdx <<" with " <<name <<": "
+					<<"未能识别日期格式，忽略此行\n";
+				continue;
+			}
+			std::tm tmStruTmp {0,//sec
+				0,//min
+				0,//hour
+				num3,//day
+				num2-1,//mon
+				num1-1900,//year
+				0,//wday
+				0,//yday
+				0,};//isdst
+			auto tmNumTmp = TimeStruToTimeNum(tmStruTmp);
+			if(tmNumTmp<0) {
+				cout <<"warning in line " <<lineIdx <<" with " <<name <<": "
+					<<"日期范围错误，忽略此行\n";
+				continue;
+			}
+			//时间不合法，在不为初始未使用时间的情况下小于上次时间
+			else if((!(bInitDate && vecList.empty()) && tmNumTmp<=nowTime)) {
+				cout <<"warning in line " <<lineIdx <<" with " <<c_flagData <<": "
+					<<"日期出现倒退情况，忽略此行\n";
+				continue;
+			}
+			nowTime = tmNumTmp;
+			nowSize = 0;
+			bInitDate = false;
+		}
+		//若改变每天数量
+		else if(name==c_flagGroup) {
+			if(!(iss >>num1) || num1<=0) {
+				cout <<"warning in line " <<lineIdx <<" with " <<name <<": "
+					<<"未提供数量或数量不为正，忽略此行\n";
+				continue;
+			}
+			groupSize = num1;
+			if(nowSize>0) {
+				nowSize = 0;
+				nowTime += timeOneDay;
+			}
+		}
+		//若添加空白表
+		else if(name==c_flagBlank) {
+			if(!(iss >>num1))
+				num1 = 0;
+			if(num1<0) {
+				cout <<"warning in line " <<lineIdx <<" with " <<name <<": "
+					<<"提供数量为负，忽略此行\n";
+				continue;
+			}
+			if(nowSize>0) {
+				nowSize = 0;
+				nowTime += timeOneDay;
+			}
+			nowTime += num1*timeOneDay;
+		}
+		//若添加表
+		else {
+			bool bHaveIdx = true;
+			if(!(iss >>num1)) {
+				bHaveIdx = false;//标记表没有序号
+				num1 = 0, num2 = 0;
+			}
+			else if(num1<0) {
+				cout <<"warning in line " <<lineIdx <<" with " <<name <<": "
+					<<"提供第一个数字为负，忽略此行\n";
+				continue;
+			}
+			if(!(iss >>num2)) {
+				num2 = num1;
+			}
+			else if(num2<num1) {
+				cout <<"warning in line " <<lineIdx <<" with " <<name <<": "
+					<<"提供第二个数字小于第一个数字，忽略此行\n";
+				continue;
+			}
+			++ num2;
+			listCnt += num2-num1;
+			for(int i=num1; i<num2; ) {
+				int lastSize = std::min(groupSize-nowSize, num2-i);
+				string newName;
+				//改变名字
+				if(!bHaveIdx)
+					newName = name;
+				else if(lastSize==1)
+					newName <<name <<"(" <<std::to_string(i) <<")";
+				else {
+					newName <<name <<"(" <<std::to_string(i) <<"-"
+						<<std::to_string(i+lastSize-1) <<")";
+				}
+				if(nowSize==0)
+					vecList.emplace_back(nowTime, newName);
+				else
+					vecList.back().second <<", " <<newName;
+				//循环更新
+				i += lastSize;
+				nowSize += lastSize;
+				if(nowSize>=groupSize) {
+					nowTime += timeOneDay;
+					nowSize = 0;
+				}
+			}
+		} 
+		if(iss >>strLine) {
+			cout <<"warning in line " <<lineIdx <<" with " <<name <<": "
+				<<"读取完成后仍有剩余字符\n";
+		}
+	}
+	OstreamSet<> osst({&cout, &ofs});//共同输出
+	osst <<"单词表数: " <<listCnt <<"\n"
+		<<"背新单词天数: " <<vecList.size() <<"\n";
+	vector<string> vecOut;
+	//生成表
+	if(!vecList.empty()) {
+		time_t tmNum = vecList.front().first;//当前时间
+		int idx = 0;//当前vecList索引
+		while(true) {
+			string strTmp;
+			bool bHaveNew = idx!=vecList.size() && vecList[idx].first==tmNum;//有新的单词表
+			if(bHaveNew)
+				strTmp <<"背: " <<vecList[idx].second <<"\n";
+			//找复习的单词表
+			int idxSt;//vecList在period范围内的起始位置
+			for(idxSt = idx-1; idxSt>=0; --idxSt) {
+				if(vecList[idxSt].first<tmNum-timeOneDay*vecPeriod.back())
+					break;
+			}
+			int idxPeriod = vecPeriod.size()-1;//vecPeriod索引
+			for(++idxSt; idxSt<=idx; ++idxSt) {
+				if(idxSt==vecList.size())
+					break;
+				for(; idxPeriod>=0
+					&& vecList[idxSt].first>tmNum-timeOneDay*vecPeriod[idxPeriod]; --idxPeriod
+					)
+					;
+				if(idxPeriod>=0
+					&& vecList[idxSt].first==tmNum-timeOneDay*vecPeriod[idxPeriod])
+				{
+					strTmp <<"复习: " <<vecList[idxSt].second <<"\n";
+					-- idxPeriod;
+				}
+			}
+			//不为空则导入
+			if(!strTmp.empty()) {
+				vecOut.emplace_back();
+				vecOut.back() <<std::to_string(vecOut.size()) <<",  "
+					<<TimeToStr(tmNum, true, false, "%F") <<":\n"
+					<< strTmp;
+			}
+			//更新计数
+			tmNum += timeOneDay;
+			if(bHaveNew)
+				++ idx;
+			else {//idx==0不会进入发生
+				//若超出复习最大周期
+				if(vecList[idx-1].first<tmNum-timeOneDay*vecPeriod.back()) {
+					if(idx==vecList.size())
+						break;
+					else
+						tmNum = vecList[idx].first;
+				}
+			}
+		}
+	}
+	osst <<"总背单词天数: " <<vecOut.size() <<"\n";
+	ofs <<"计划表如下: " <<"\n\n";
+	for(auto &str: vecOut)
+		ofs <<str <<"\n";
+	ofs.close();
+	cout <<"生成完成，计划表已导入文件";
+	cin >>endl;
+}
+
+
+//调试用，存储所有文件
+void DebugSaveAll()
+{
+	auto lbd = [](ListType::iterator it)-> const string & {
+		return it->first;
+	};
+	ListNameSet setSave(TieDerefIterWrapper(g_mapWord.begin(), lbd),
+		TieDerefIterWrapper(g_mapWord.end(), lbd));
+	WriteDataFile(setSave);
+}
+
+
 
 int main()
 {
@@ -995,7 +1254,8 @@ int main()
 					<<"search，搜索词汇表单词\n"
 					<<"regularize，检查所有词汇表的中文是否一致\n"
 					<<"input，从文件导入词汇表\n"
-					<<"adInput，高级从文件导入词汇表\n"
+					<<"adinput，高级从文件导入词汇表\n"
+					<<"plan，按照记忆曲线生成计划"
 					<<"output，词汇表导出到文件\n";
 			}
 			else
@@ -1025,13 +1285,16 @@ int main()
 			ChoiceRegularize(curName, setSave);
 		else if(choice=="input")
 			ChoiceInput(curName, setSave);
-		else if(choice=="adInput")
+		else if(choice=="adinput")
 			ChoiceAdInput(curName, setSave);
 		else if(choice=="output")
 			ChoiceOutput(curName, setSave);
+		else if(choice=="plan")
+			ChoicePlan(curName, setSave);
 		else if(choice=="exit")
 			break;
 
+		//DebugSaveAll();
 
 		//保存文件
 		WriteDataFile(setSave);

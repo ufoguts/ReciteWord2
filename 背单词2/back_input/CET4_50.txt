@@ -1,0 +1,146 @@
+  0    relationship    关系
+  1    benefit    益处
+  2    average    平均
+  3    program    方案
+  4    reduction    减少
+  5    environment    环境
+  6    potential    潜能
+  7    individual    个体的
+  8    professional    职业的
+  9    according to    按照
+ 10    pressure    压力
+ 11    career    职业
+ 12    opportunity    机会
+ 13    decline    下降
+ 14    focus    聚焦
+ 15    lower    较低的
+ 16    reduce    减少
+ 17    demand    需求
+ 18    responsible    负有责任的
+ 19    various    各种各样的
+ 20    impact    影响
+ 21    invest    投资
+ 22    amount    数量
+ 23    imply    暗示
+ 24    evidence    证据
+ 25    shift    转变
+ 26    issue    问题
+ 27    economic    经济的
+ 28    consumer    消费者
+ 29    increasingly    越来越多地
+ 30    critical    批评的
+ 31    respect    尊敬
+ 32    limit    限制
+ 33    apply    申请，应用
+ 34    financial    金融的
+ 35    consequence    结果
+ 36    effect    影响
+ 37    unique    独特的
+ 38    security    安全
+ 39    involve    涉及
+ 40    item    一项
+ 41    employee    雇员
+ 42    identify    识别
+ 43    current    当前的
+ 44    rate    比率
+ 45    contribute    贡献出
+ 46    essential    必要的
+ 47    purchase    购买
+ 48    ignore    忽视
+ 49    promote    促进
+ 50    data    数据
+ 51    maintain    维持
+ 52    overseas    在海外
+ 53    instance    例子
+ 54    exchange    交换
+ 55    highly    高度地
+ 56    formal    正式的
+ 57    economy    经济
+ 58    predict    预言
+ 59    consume    消费
+ 60    investment    投资
+ 61    resource    资源
+ 62    variety    品种
+ 63    claim    声称
+ 64    remove    移除
+ 65    contact    联系
+ 66    peer    凝视，同龄人
+ 67    supply    供应
+ 68    display    显示
+ 69    appeal    呼吁
+ 70    realize    认识到
+ 71    participate    参与
+ 72    specific    特定的
+ 73    particularly    特别，尤其
+ 74    vary    不同
+ 75    range    范围
+ 76    performance    表演
+ 77    therefore    因此
+ 78    loan    贷款
+ 79    appreciate    欣赏，感激
+ 80    pursue    追求
+ 81    indicate    表明
+ 82    crucial    关键的
+ 83    solution    解决
+ 84    scientific    科学的
+ 85    payment    支付
+ 86    phenomenon    现象
+ 87    mobile    移动的
+ 88    eventually    终于
+ 89    ensure    确保
+ 90    suffer    忍受
+ 91    workforce    劳动力
+ 92    household    家庭
+ 93    decrease    减少
+ 94    responsibility    责任
+ 95    device    设备，方法
+ 96    assignment    分派，工作
+ 97    debate    辩论
+ 98    majority    大多数
+ 99    challenge    挑战
+100    partly    部分地
+101    quit    离开
+102    effective    有效的
+103    detail    细节
+104    online    在线的
+105    gain    获得
+106    enrich    充实
+107    agency    代理处
+108    agent    代理人
+109    explore    探索
+110    willing    乐意的
+111    commit    犯罪，承担
+112    trend    趋势
+113    character    人物
+114    concentrate    专注
+115    perform    执行，表演
+116    throughout    遍及处处
+117    significant    重要的
+118    female    女性
+119    margin    边缘，页边空白
+120    recommend    推荐
+121    select    选择
+122    staff    人员
+123    global    全球的
+124    expense    费用
+125    cultural    文化的
+126    improvement    改进
+127    additional    附加的
+128    digital    数码的
+129    source    来源
+130    award    授予，奖品
+131    relate    联系
+132    priority    优先的事
+133    gap    缺口，差距
+134    combine    结合
+135    enable    使能
+136    profit    利润
+137    approach    接近
+138    remarkable    显著地
+139    expectation    预期
+140    delay    延迟
+141    typical    典型的
+142    permanent    永久的
+143    complain    抱怨
+144    launch    发射
+145    occur    发生

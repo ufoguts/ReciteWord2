@@ -1,0 +1,192 @@
+  0    option    选择
+  1    cope    应付
+  2    handle    处理
+  3    complex    复杂的
+  4    necessarily    必定
+  5    fascinate    使着迷
+  6    recognize    认出
+  7    reward    奖赏
+  8    minor    少数的
+  9    factor    因素
+ 10    occasion    场合
+ 11    conflict    冲突
+ 12    release    释放
+ 13    despite    尽管
+ 14    reserve    保留
+ 15    prosperity    繁荣
+ 16    circumstance    情况
+ 17    attribute    归因于
+ 18    institution    机构
+ 19    publish    出版
+ 20    possibility    可能性
+ 21    insurance    保险
+ 22    disappear    消失
+ 23    hire    雇佣
+ 24    delight    高兴
+ 25    threaten    威胁
+ 26    characteristic    独特的
+ 27    characterize    表征
+ 28    ideal    理想的
+ 29    establish    建立
+ 30    platform    平台
+ 31    treatment    治疗
+ 32    council    委员会
+ 33    associate    联系，结交
+ 34    attempt    尝试
+ 35    boost    提高
+ 36    obtain    获得
+ 37    exception    例外
+ 38    popularity    流行
+ 39    finding    发现物
+ 40    ambitious    有雄心的
+ 41    contest    竞赛
+ 42    costly    昂贵的
+ 43    competitive    竞争的
+ 44    mechanic    技工
+ 45    revolution    革命
+ 46    finance    金融
+ 47    largely    大部分地
+ 48    determine    决定，查明
+ 49    liberal    自由的
+ 50    budget    预算
+ 51    fancy    想象
+ 52    response    回应
+ 53    desire    渴望
+ 54    rely    依靠，信赖
+ 55    technical    技术的
+ 56    schedule    计划表
+ 57    domestic    国内的
+ 58    equal    平等的
+ 59    generous    慷慨的
+ 60    economist    经济学家
+ 61    previous    先前的
+ 62    awareness    意识
+ 63    string    串
+ 64    productive    多产的
+ 65    independent    独立的
+ 66    broaden    扩大
+ 67    justify    证明有理
+ 68    behavior    行为
+ 69    shock    震惊
+ 70    attach    附上
+ 71    vital    至关重要的
+ 72    attitude    态度
+ 73    primarily    主要地
+ 74    label    标签
+ 75    beneficial    有益的
+ 76    cultivate    培养
+ 77    capacity    容量，性能
+ 78    extent    程度
+ 79    critic    批评家
+ 80    grant    授予
+ 81    bankrupt    破产，破产的
+ 82    personality    性格
+ 83    recruit    招募
+ 84    assign    指派
+ 85    citizen    市民
+ 86    strategy    战略
+ 87    strategic    战略的
+ 88    prospect    前景
+ 89    talent    天赋
+ 90    negative    消极的
+ 91    resolve    决定
+ 92    replace    替换
+ 93    institute    机构
+ 94    revenue    收入
+ 95    exhibit    陈列，展示
+ 96    discount    打折
+ 97    sponsor    发起者，赞助
+ 98    convenient    方便的
+ 99    convenience    方便
+100    announce    宣布
+101    consumption    消耗量
+102    qualify    使有资格
+103    reference    涉及，引用
+104    dependent    依靠的
+105    immediate    立刻的
+106    insist    坚持主张
+107    participation    参与
+108    differ    不同
+109    comment    评论
+110    document    文件
+111    extend    扩大
+112    reputation    名声
+113    prosperous    繁荣的
+114    locate    坐落于
+115    rarely    很少
+116    reveal    揭露
+117    historical    历史的
+118    reservation    保留，预定
+119    employer    雇主
+120    concept    概念
+121    observe    观察
+122    resort    求助，凭借
+123    energetic    精力充沛的
+124    conduct    引导
+125    derive    取得
+126    mystery    谜
+127    creation    创造
+128    creative    创造性的
+129    intention    意图，打算
+130    confident    有信心的
+131    confidence    信心
+132    estimate    估计
+133    dominate    支配
+134    strip    脱去，长条
+135    dozen    一打
+136    survival    幸存，幸存者
+137    generate    产生
+138    living    活的
+139    scene    场景
+140    justic    公正的
+141    exert    发挥，尽力
+142    mass    大量
+143    site    地点，场所
+144    positive    积极地
+145    industrial    工业的
+146    perspective    观点
+147    otherwise    另外
+148    recall    回忆
+149    extreme    极度的
+150    constant    持续的
+151    realistic    现实的
+152    compete    竞争
+153    propose    提议，打算
+154    entire    全部的
+155    ingredient    组成部分
+156    poll    民意调查
+157    clue    线索
+158    campus    校园
+159    aware    意识到的
+160    conference    会议
+161    deliver    投递
+162    transportation    运输
+163    recession    （经济）衰退
+164    inform    通知
+165    tension    紧张
+166    evolve    进化，演变
+167    transaction    交易
+168    crisis    危机
+169    guarantee    保证
+170    restore    修复，归还
+171    requirement    需求
+172    committee    委员会
+173    revise    修正，复习
+174    optimistic    乐观的
+175    dramatic    戏剧性的
+176    poverty    贫穷
+177    literature    文学
+178    definitely    明确地
+179    emotional    情感的
+180    sacrifice    牺牲
+181    federal    联邦制的
+182    income    收入
+183    presence    出席
+184    style    风格
+185    engage    从事，吸引
+186    efficient    高效的
+187    facility    设备
+188    bound    一定的
+189    similarly    相似地
+190    implication    可能的影响
+191    virtually    实际上

@@ -114,25 +114,16 @@ struct IsRemoveCVRefSame:
 
 //测试是否为迭代器
 template<class Ty, class= void>
-struct IsIterator:
+struct IsIteratorType:
 	std::false_type
 {
 };
 template<class Ty>
-struct IsIterator<Ty, typename ParamValidTester<
+struct IsIteratorType<Ty, typename ParamValidTester<
 	typename std::iterator_traits<Ty>::iterator_category>::type
 >: std::true_type
 {
 };
-
-
-
-//提取变量的常引用
-template<typename Ty>
-const Ty &ConstRef(const Ty &value)
-{
-	return value;
-}
 
 
 
@@ -169,6 +160,15 @@ struct TypeAttachAttribute<TySrc &&, TyDst>
 {
 	using type = typename std::add_rvalue_reference<
 		typename TypeAttachAttribute<TySrc, TyDst>>::type;
+};
+
+
+
+//求调用返回值类型
+template<typename TyFunc, typename ...Ty_S>
+struct InvokeReturnType
+{
+	using type = decltype(std::declval<TyFunc>()(std::declval<Ty_S>()...));
 };
 
 
@@ -341,17 +341,43 @@ struct ValueHold<void>
 //类型成员或辅助函数扩展
 //**********************
 
+//调用变量的析构函数
+template<typename Ty>
+void CallDistruct(Ty &value)
+{
+	value.~Ty();
+}
+
+
+
+//提取变量的常引用
+template<typename Ty>
+const Ty &ConstRef(const Ty &value)
+{
+	return value;
+}
+
+
+//对变量进行拷贝
+template<typename Ty>
+Ty CreateCopy(const Ty &value)
+{
+	return Ty(value);
+}
+
+
+
 //c风格字符串转化字符串，重载其他类型
-inline std::string SzToStr(const char *sz)
+inline std::string OverrideSzToStr(const char *sz)
 {
 	return std::string(sz);
 }
-inline std::string SzToStr(char *sz)
+inline std::string OverrideSzToStr(char *sz)
 {
 	return std::string(sz);
 }
 template<typename Ty>
-inline Ty &&SzToStr(Ty &&arg)
+inline Ty &&OverrideSzToStr(Ty &&arg)
 {
 	return std::forward<Ty>(arg);
 }
@@ -551,12 +577,12 @@ inline std::string &operator <<(std::basic_string<Ele> &str, Ty &&arg)
 
 //检查是否为tuple类
 template<typename Ty>
-struct TypeIsTuple:
+struct IsTupleType:
 	std::false_type
 {
 };
 template<typename ...Ty_S>
-struct TypeIsTuple<std::tuple<Ty_S...>>:
+struct IsTupleType<std::tuple<Ty_S...>>:
 	std::true_type
 {
 };
@@ -682,160 +708,192 @@ struct IteratorEuqalTo
 
 
 //字符数字判断
-inline constexpr bool CharIsNum(char ch)
+inline constexpr bool IsNumChar(char ch)
 {
 	return ch>='0' && ch<='9';
 }
-inline constexpr bool CharIsNotNum(char ch)
+inline constexpr bool IsNotNumChar(char ch)
 {
-	return !CharIsNum(ch);
+	return !IsNumChar(ch);
+}
+//字符大写字母判断
+inline constexpr bool IsUppChar(char ch)
+{
+	return (ch>='A' && ch<='Z');
+}
+inline constexpr bool IsNotUppChar(char ch)
+{
+	return !IsUppChar(ch);
+}
+//字符大写字母判断
+inline constexpr bool IsLowChar(char ch)
+{
+	return (ch>='a' && ch<='z');
+}
+inline constexpr bool IsNotLowChar(char ch)
+{
+	return !IsLowChar(ch);
 }
 //字符字母判断
-inline constexpr bool CharIsLet(char ch)
+inline constexpr bool IsLetChar(char ch)
 {
-	return (ch>='a' && ch<='z') || (ch>='A' && ch<='Z');
+	return IsUppChar(ch) || IsLowChar(ch);
 }
-inline constexpr bool CharIsNotLet(char ch)
+inline constexpr bool IsNotLetChar(char ch)
 {
-	return !CharIsLet(ch);
+	return !IsLetChar(ch);
 }
 //字符数字字母判断
-inline constexpr bool CharIsNumLet(char ch)
+inline constexpr bool IsNumLetChar(char ch)
 {
-	return (ch>='0' && ch<='9')
-		|| (ch>='a' && ch<='z') || (ch>='A' && ch<='Z');
+	return IsNumChar(ch) || IsLetChar(ch);
 }
-inline constexpr bool CharIsNotNumLet(char ch)
+inline constexpr bool IsNotNumLetChar(char ch)
 {
-	return !CharIsNumLet(ch);
+	return !IsNumLetChar(ch);
 }
 //字符标识符判断
-inline constexpr bool CharIsId(char ch)
+inline constexpr bool IsIdChar(char ch)
 {
-	return (ch>='0' && ch<='9')
-		|| (ch>='a' && ch<='z') || (ch>='A' && ch<='Z')
-		|| (ch=='_');
+	return IsNumLetChar(ch) || (ch=='_');
 }
-inline constexpr bool CharIsNotId(char ch)
+inline constexpr bool IsNotIdChar(char ch)
 {
-	return !CharIsId(ch);
+	return !IsIdChar(ch);
 }
 //字符十六进制判断
-inline constexpr bool CharIsHex(char ch)
+inline constexpr bool IsHexChar(char ch)
 {
 	return (ch>='0' && ch<='9')
-		|| (ch>='a' && ch<='f') || (ch>='A' && ch<='F')
-		|| (ch=='_');
+		|| (ch>='a' && ch<='f') || (ch>='A' && ch<='F');
 }
-inline constexpr bool CharIsNotHex(char ch)
+inline constexpr bool IsNotHexChar(char ch)
 {
-	return !CharIsHex(ch);
+	return !IsHexChar(ch);
 }
 //字符ascii判断
-inline constexpr bool CharIsAscii(char ch)
+inline constexpr bool IsAsciiChar(char ch)
 {
-	return ch>=0 && ch<=127;
+	return ch>=0x00 && ch<=0x7F;
 }
-inline constexpr bool CharIsNotAscii(char ch)
+inline constexpr bool IsNotAsciiChar(char ch)
 {
-	return !CharIsAscii(ch);
+	return !IsAsciiChar(ch);
 }
 //字符广义标识符判断
-inline constexpr bool CharIsBroadId(char ch)
+inline constexpr bool IsBroadIdChar(char ch)
 {
-	return CharIsId(ch) || CharIsNotAscii(ch);
+	return IsIdChar(ch) || IsNotAsciiChar(ch);
 }
-inline constexpr bool CharIsNotBroadId(char ch)
+inline constexpr bool IsNotBroadIdChar(char ch)
 {
-	return !CharIsBroadId(ch);
+	return !IsBroadIdChar(ch);
 }
 //字符空白符判断
-inline constexpr bool CharIsBlank(char ch)
+inline constexpr bool IsBlankChar(char ch)
 {
 	return ch==' ' || ch=='\t' || ch=='\r' || ch=='\n'
 		|| ch=='\v' || ch=='\f';
 }
-inline constexpr bool CharIsNotBlank(char ch)
+inline constexpr bool IsNotBlankChar(char ch)
 {
-	return !CharIsBlank(ch);
+	return !IsBlankChar(ch);
+}
+
+
+//小写字母转换大写字母
+inline constexpr char LowCharToUppChar(char ch)
+{
+	return IsLowChar(ch) ?
+		'A'+(ch-'a')
+		:
+		0;
+}
+//大写字母转小写字母
+inline constexpr char UppCharToLowChar(char ch)
+{
+	return IsUppChar(ch) ?
+		'a'+(ch-'A')
+		:
+		0;
 }
 
 
 //数字字符转化数字
-inline int CharToNum(char ch)
+inline constexpr int NumCharToNum(char ch)
 {
-	if(ch>='0' && ch<='9')
-		return ch-'0';
-	else
-		return -1;
+	return IsNumChar(ch) ?
+		ch-'0'
+		:
+		-1;
 }
 //字母字符转化数字
-inline int CharToLet(char ch)
+inline constexpr int LetCharToNum(char ch)
 {
-	if(ch>='a' && ch<='z')
-		return ch-'a';
-	else if(ch>='A' && ch<='Z')
-		return ch-'A';
-	else
-		return -1;
+	return IsLowChar(ch) ?
+		ch-'a'
+		: IsUppChar(ch) ?
+		ch-'A'
+		:
+		-1;
 }
 //十六进制字符转化数字
-inline int CharToHex(char ch)
+inline constexpr int HexCharToNum(char ch)
 {
-	if(ch>='0' && ch<='9')
-		return ch-'0';
-	else if(ch>='a' && ch<='z')
-		return ch-'a'+10;
-	else if(ch>='A' && ch<='Z')
-		return ch-'A'+10;
-	else
-		return -1;
+	return (ch>='0' && ch<='9') ?
+		ch-'0'
+		: (ch>='a' && ch<='f') ?
+		ch-'a'+10
+		: (ch>='A' && ch<='F') ?
+		ch-'A'+10
+		:
+		-1;
 }
 
 
 //数字转化数字字符
-inline char NumToChar(int i)
+inline constexpr char NumToNumChar(int i)
 {
-	if(i>=0 && i<=9)
-		return i+'0';
-	else
-		return 0;
+	return (i>=0 && i<=9) ?
+		i+'0'
+		:
+		0;
 }
 //数字转化大写字母字符
-inline char LetToUppChar(int i)
+inline constexpr char NumToUppChar(int i)
 {
-	if(i>=0 && i<=25)
-		return i+'A';
-	else
-		return 0;
+	return (i>=0 && i<=25) ?
+		i+'A'
+		:
+		0;
 }
 //数字转化小写字母字符
-inline char LetToLowChar(int i)
+inline constexpr char NumToLowChar(int i)
 {
-	if(i>=0 && i<=25)
-		return i+'a';
-	else
-		return 0;
+	return (i>=0 && i<=25) ?
+		i+'a'
+		:
+		0;
 }
 //数字转化大写十六进制字符
-inline char HexToUppChar(int i)
+inline constexpr char NumToUppHexChar(int i)
 {
-	if(i>=0 && i<=9)
-		return i+'0';
-	else if(i>=10 && i<=15)
-		return i+'A';
-	else
-		return 0;
+	return (i>=0 && i<=9) ?
+		i+'0'
+		: (i>=10 && i<=15) ?
+		i+'A'
+		:
+		0;
 }
 //数字转化小写十六进制字符
-inline char HexToLowChar(int i)
+inline constexpr char NumToLowHexChar(int i)
 {
-	if(i>=0 && i<=9)
-		return i+'0';
-	else if(i>=10 && i<=15)
-		return i+'a';
-	else
-		return 0;
+	return (i>=0 && i<=9) ?
+		i+'0'
+		: (i>=10 && i<=15) ?
+		i+'a'
+		:
+		0;
 }
 
 
@@ -1002,6 +1060,69 @@ public:
 
 
 
+//通过指定函数解引用的迭代器的封装器
+//TyIt为迭代器类型，TyFunc为新的解引用函数，函数根据需求可以是值类型或引用类型
+//若多个迭代器之间相互作用，应保证传入的函数一致，否则行为未定义
+template<typename TyIt, typename TyFunc>
+class DerefIterWrapper:
+	public TyIt
+{
+private:
+	TyFunc func;//函数
+public://构造函数
+	//赋值构造
+	template<typename ...Ty_S>
+	DerefIterWrapper(TyFunc &o_func, Ty_S &&...arg_s):
+		TyIt(std::forward<Ty_S>(arg_s)...), func(o_func)
+	{
+	}
+	//拷贝
+	DerefIterWrapper(const DerefIterWrapper &other)
+		= default;
+	DerefIterWrapper &operator =(const DerefIterWrapper &other)
+	{
+		TyIt::operator =(static_cast<const TyIt &>(other));
+		return *this;
+	}
+	//移动
+	DerefIterWrapper(DerefIterWrapper &&other) noexcept
+		= default;
+	DerefIterWrapper &operator =(DerefIterWrapper &&other) noexcept
+	{
+		TyIt::operator =(std::move(static_cast<TyIt &>(other)));
+		return *this;
+	}
+public://成员函数
+	//解引用操作
+	typename InvokeReturnType<TyFunc, const TyIt &
+	>::type operator *() const
+	{
+		return func(static_cast<const TyIt &>(*this));
+	}
+	//取基本迭代器
+	TyIt Base() const
+	{
+		return static_cast<TyIt>(this);
+	}
+	//继承基类所有定义类型，运算符重载，成员函数，全局运算符重载
+};
+
+//解引用迭代器封装器生成辅助函数，为值类型函数
+template<typename TyIt, typename TyFunc>
+DerefIterWrapper<TyIt, TyFunc> MakeDerefIterWrapper(TyIt it, TyFunc &func)
+{
+	return FuncDerefIter<TyIt, TyFunc>(func, it);
+}
+//解引用迭代器封装器生成辅助函数，为引用类型函数
+template<typename TyIt, typename TyFunc>
+DerefIterWrapper<TyIt, TyFunc &> TieDerefIterWrapper(TyIt it, TyFunc &func)
+{
+	return DerefIterWrapper<TyIt, TyFunc &>(func, it);
+}
+
+
+
+
 //保存参数包类
 template<typename ...Ty_S>
 class ArgsTuple:
@@ -1087,12 +1208,12 @@ struct ArgsTupleToTuple<Ty &&>
 
 //检查是否为ArgsTuple类
 template<typename Ty>
-struct TypeIsArgsTuple:
+struct IsArgsTupleType:
 	std::false_type
 {
 };
 template<typename ...Ty_S>
-struct TypeIsArgsTuple<ArgsTuple<Ty_S...>>:
+struct IsArgsTupleType<ArgsTuple<Ty_S...>>:
 	std::true_type
 {
 };
@@ -1157,14 +1278,14 @@ inline TyDst _ArgsTupleOverloadCastAssist(TySrc &&src, IndexSequence<c_idx_s...>
 //ArgsTuple类型转换重载扩展函数，完美转发源类型
 //将ArgsTuple拆包后转化为指定类型，其他类型直接转化为指定类型
 template<typename TyDst, typename TySrc, typename TyBlank= BlankType<0>>
-inline typename std::enable_if<!TypeIsArgsTuple<
+inline typename std::enable_if<!IsArgsTupleType<
 	typename RemoveCVRef<TySrc>::type>::value, TyDst
 >::type _ArgsTupleOverloadCast(TySrc &&src)
 {
 	return TyDst(std::forward<TySrc>(src));
 }
 template<typename TyDst, typename TySrc>
-inline typename std::enable_if<TypeIsArgsTuple<
+inline typename std::enable_if<IsArgsTupleType<
 	typename RemoveCVRef<TySrc>::type>::value, TyDst
 >::type _ArgsTupleOverloadCast(TySrc &&src)
 {
@@ -1376,14 +1497,14 @@ inline typename _ArgsTupleRecurRefCatToTupleReturnTypeAssist<std::tuple<TyReady_
 );
 template<typename TyArgsTup, typename ...TyReady_S, typename ...TyRest_S,
 	typename TyBlank= BlankType<0>
-> inline typename std::enable_if<TypeIsArgsTuple<typename RemoveCVRef<TyArgsTup>::type>::value,
+> inline typename std::enable_if<IsArgsTupleType<typename RemoveCVRef<TyArgsTup>::type>::value,
 	typename _ArgsTupleRecurRefCatToTupleReturnTypeAssist<std::tuple<TyReady_S...>,
 	TyArgsTup &&, TyRest_S &&...>::type
 >::type _ArgsTupleRecurRefCatToTuple(std::tuple<TyReady_S...> &&ready,
 	TyArgsTup &&argsTup, TyRest_S &&...rest_s
 );
 template<typename Ty, typename ...TyReady_S, typename ...TyRest_S>
-inline typename std::enable_if<!TypeIsArgsTuple<typename RemoveCVRef<Ty>::type>::value,
+inline typename std::enable_if<!IsArgsTupleType<typename RemoveCVRef<Ty>::type>::value,
 	typename _ArgsTupleRecurRefCatToTupleReturnTypeAssist<std::tuple<TyReady_S...>,
 	Ty &&, TyRest_S &&...>::type
 >::type _ArgsTupleRecurRefCatToTuple(std::tuple<TyReady_S...> &&ready,
@@ -1413,7 +1534,7 @@ inline typename _ArgsTupleRecurRefCatToTupleReturnTypeAssist<std::tuple<TyReady_
 //递归到参数包重载
 template<typename TyArgsTup, typename ...TyReady_S, typename ...TyRest_S,
 	typename TyBlank/*= BlankType<0>*/
-> inline typename std::enable_if<TypeIsArgsTuple<typename RemoveCVRef<TyArgsTup>::type>::value,
+> inline typename std::enable_if<IsArgsTupleType<typename RemoveCVRef<TyArgsTup>::type>::value,
 	typename _ArgsTupleRecurRefCatToTupleReturnTypeAssist<std::tuple<TyReady_S...>,
 	TyArgsTup &&, TyRest_S &&...>::type
 >::type _ArgsTupleRecurRefCatToTuple(std::tuple<TyReady_S...> &&ready,
@@ -1426,7 +1547,7 @@ template<typename TyArgsTup, typename ...TyReady_S, typename ...TyRest_S,
 }
 //递归到非参数包重载
 template<typename Ty, typename ...TyReady_S, typename ...TyRest_S>
-inline typename std::enable_if<!TypeIsArgsTuple<typename RemoveCVRef<Ty>::type>::value,
+inline typename std::enable_if<!IsArgsTupleType<typename RemoveCVRef<Ty>::type>::value,
 	typename _ArgsTupleRecurRefCatToTupleReturnTypeAssist<std::tuple<TyReady_S...>,
 	Ty &&, TyRest_S &&...>::type
 >::type _ArgsTupleRecurRefCatToTuple(std::tuple<TyReady_S...> &&ready,
@@ -1448,14 +1569,14 @@ inline typename ArgsTupleRecurRefCatReturnType<Ty_S &&...
 
 
 //计算使用值类型tuple调用函数的返回类型辅助类
-template<typename ...Tys>
+template<typename ...>
 struct _ValueTupleSimpleInvokeReturnType
 {
 };
 template<typename TyFunc, typename ...Ty_S>
 struct _ValueTupleSimpleInvokeReturnType<TyFunc, std::tuple<Ty_S...>>
 {
-	using type = decltype(std::declval<TyFunc>()(std::declval<Ty_S>()...));
+	using type = typename InvokeReturnType<TyFunc, Ty_S...>::type;
 };
 
 //ArgsTuple调用，计算返回类型辅助类
@@ -1476,7 +1597,7 @@ inline typename _ValueTupleSimpleInvokeReturnType<TyFunc &&, TyTup
 }
 //使用单个ArgsTuple类调用函数，只能使用一个参数包类型
 template<typename TyFunc, typename TyArgsTup>
-inline typename std::enable_if<TypeIsArgsTuple<typename RemoveCVRef<TyArgsTup>::type>::value,
+inline typename std::enable_if<IsArgsTupleType<typename RemoveCVRef<TyArgsTup>::type>::value,
 	typename ArgsTupleInvokeReturnType<TyFunc &&, TyArgsTup &&>::type
 >::type ArgsTupleSimpleInvoke(TyFunc &&func, TyArgsTup &&argsTup)
 {
@@ -1527,6 +1648,13 @@ inline typename ArgsTupleRecurInvokeReturnType<TyFunc &&, Ty_S &&...
 //工具构造转换函数
 //****************
 
+//时间转换用静态互斥变量
+static inline std::mutex &_TimeFuncStaticMutex()
+{
+	static std::mutex mtx;
+	return mtx;
+}
+
 //将timeval转化为duration
 template<typename Ty= BlankType<0>>
 inline std::chrono::microseconds TimevalToDuration(const timeval &tmval)
@@ -1534,11 +1662,83 @@ inline std::chrono::microseconds TimevalToDuration(const timeval &tmval)
 	return std::chrono::microseconds((long long)tmval.tv_sec*1000000+tmval.tv_usec);
 }
 
+//将time_t转化为tm格式，会将时间卡在正常范围内不会失败
+template<typename TyPtr= std::mutex *>
+inline std::tm TimeNumToTimeStru(std::time_t tmNum, bool bLocal= true,
+	bool bThdSafe= false, TyPtr pMtx= nullptr)
+{
+	if(pMtx==nullptr)
+		pMtx = &_TimeFuncStaticMutex();
+	static std::mutex s_mtx;
+	if(tmNum>=(1LL<<31))
+		tmNum = (1LL<<31)-1;
+	else if(tmNum<0)
+		tmNum = 0;
+	//加锁
+	if(bThdSafe)
+		pMtx->lock();
+	//转化
+	std::tm tmStu;
+	if(bLocal)
+		tmStu = *std::localtime(&tmNum);
+	else
+		tmStu = *std::gmtime(&tmNum);
+	//解锁
+	if(bThdSafe)
+		pMtx->unlock();
+	return tmStu;
+}
+
+//将tm格式转化为time_t格式，bLocal表示tm中是否是本地时间表示
+//成功会同时格式化tmStru，失败返回-1
+template<typename TyPtr= std::mutex *>
+inline std::time_t TimeStruToTimeNum(std::tm &tmStru, bool bLocal= true,
+	bool bThdSafe= false, TyPtr pMtx= nullptr)
+{
+	if(pMtx==nullptr)
+		pMtx = &_TimeFuncStaticMutex();
+	auto tmNum = std::mktime(&tmStru);
+	if(tmNum<0)
+		return tmNum;
+	if(!bLocal)
+		return tmNum;
+	else {
+		/*
+		已知，tmStruLocal = localtime(tmNum)
+		      tmStruUtc = gmtime(tmNum)
+				tmNum = mktime(tmStruUtc)
+		可知，tmStruLocal = localtime(mktime(tmStruUtc))
+		设，tmStruUtc = tmStruLocal + tmDif
+		则，tmDif = tmStruUtc - tmStruLocal
+		          = tmStruUtc - localtime(mktime(tmStruUtc))
+					 = mktime(tmStruUtc) - mktime(localtime(mktime(tmStruUtc)))
+		          = tmNum - mktime(localtime(tmNum))
+		又因，tmStruUtc = tmStruLocal + tmDif
+		      mktime(tmStruUtc) = mktime(tmStruLocal + tmDif)
+				                  = mktime(tmStruLocal) + tmDif
+		可得，tmNum = mktime(tmStruLocal) + tmDif
+		            = mktime(tmStruLocal) + tmNum - mktime(localtime(tmNum))
+		*/
+		constexpr time_t tmNumTmp = 60*60*24;
+		//加锁
+		if(bThdSafe)
+			pMtx->lock();
+		auto tmNumRet = tmNum + tmNumTmp - mktime(&std::tm(*localtime(&tmNumTmp)));
+		//解锁
+		if(bThdSafe)
+			pMtx->unlock();
+		return tmNumRet;
+	}
+}
+
+
+#define DEFAULT_TIME_FMT "%F %T"//默认时间格式
+#define DEFAULT_TIME_PRECISE_FMT "%F %T.%@"//默认时间高精度格式
 
 //由tm转化为格式化字符串
 template<typename Ty= BlankType<0>>
 inline std::string TimeToStr(const std::tm &tmStu,
-	const std::string &fmt="%F %T", int maxLen= 256)
+	const std::string &fmt=DEFAULT_TIME_FMT, int maxLen= 1024)
 {
 	std::string str(maxLen, '\0');
 	if(strftime(&str[0], str.size(), fmt.c_str(), &tmStu)) {
@@ -1553,45 +1753,21 @@ inline std::string TimeToStr(const std::tm &tmStu,
 //由time_t转化为格式化字符串，bThdSafe进行互斥，若pMtx为null则使用局部静态锁
 template<typename TyPtr= std::mutex *>
 inline std::string TimeToStr(std::time_t tmNum, bool bLocal= true,
-	bool bThdSafe= false, const std::string &fmt="%F %T", TyPtr pMtx= nullptr)
+	bool bThdSafe= false, const std::string &fmt=DEFAULT_TIME_FMT, TyPtr pMtx= nullptr)
 {
-	static std::mutex s_mtx;
-	if(tmNum>=(1LL<<31))
-		tmNum = (1LL<<31)-1;
-	else if(tmNum<0)
-		tmNum = 0;
-	//加锁
-	if(bThdSafe) {
-		if(pMtx==nullptr)
-			s_mtx.lock();
-		else
-			pMtx->lock();
-	}
-	//转化
-	std::tm *pTimeStu;
-	if(bLocal)
-		pTimeStu = std::localtime(&tmNum);
-	else
-		pTimeStu = std::gmtime(&tmNum);
-	string str = TimeToStr(*pTimeStu, fmt);
-	//解锁
-	if(bThdSafe) {
-		if(pMtx==nullptr)
-			s_mtx.unlock();
-		else
-			pMtx->unlock();
-	}
+	auto tmStru = TimeNumToTimeStru(tmNum, bLocal, bThdSafe, pMtx);
+	string str = TimeToStr(tmStru, fmt);
 	return str;
 }
 
 //由duration转化为格式化字符串
-//DecimalBit为负则自动推断小数位数，非负则设定小数位数，格式中添加%@表示小数部分（带小数点）
+//DecimalBit为负则自动推断小数位数，非负则设定小数位数，格式中添加%@表示小数部分（不带小数点）
 template<int c_decimalBit, typename Rep, typename Period,
 	typename TyPtr= std::mutex *
 > inline typename std::enable_if<
 	std::is_integral<Rep>::value && std::is_signed<Rep>::value, std::string
 >::type TimeToStr(std::chrono::duration<Rep, Period> tmdu, bool bLocal= true,
-	bool bThdSafe= false, const std::string &fmt ="%F %T%@", TyPtr pMtx= nullptr)
+	bool bThdSafe= false, const std::string &fmt =DEFAULT_TIME_PRECISE_FMT, TyPtr pMtx= nullptr)
 {
 	if(tmdu<std::chrono::seconds(0))
 		tmdu = std::chrono::seconds(0);
@@ -1613,7 +1789,7 @@ template<int c_decimalBit, typename Rep, typename Period,
 			if(fmt[i+1]!='@')
 				oss <<fmt[i] <<fmt[i+1];
 			else if(c_realDecimalBit>0)
-				oss <<'.' <<std::setw(c_realDecimalBit) <<tmduDecimal.count();
+				oss <<std::setw(c_realDecimalBit) <<tmduDecimal.count();
 			++ i;
 		}
 		//否则直接传入
@@ -1630,28 +1806,28 @@ template<typename TyPtr= std::mutex *>
 inline std::string TimeToStr(
 	const std::chrono::system_clock::time_point &tmpt,
 	bool bLocal= true, bool bThdSafe= false,
-	const std::string &fmt ="%F %T", TyPtr pMtx= nullptr)
+	const std::string &fmt =DEFAULT_TIME_FMT, TyPtr pMtx= nullptr)
 {
 	return TimeToStr(std::chrono::system_clock::to_time_t(tmpt),
 		bLocal, bThdSafe, fmt, pMtx);
 }
 
 //高精度由system_clock::time_point转化为格式化字符串，由实现保证正确性
-//DecimalBit为负则自动推断小数位数，非负则设定小数位数，格式中添加%@表示小数部分（带小数点）
+//DecimalBit为负则自动推断小数位数，非负则设定小数位数，格式中添加%@表示小数部分（不带小数点）
 template<int c_decimalBit, typename TyPtr= std::mutex *>
 inline std::string TimeToStr(
 	const std::chrono::time_point<std::chrono::system_clock> &tmpt,
 	bool bLocal= true, bool bThdSafe= false,
-	const std::string &fmt ="%F %T%@", TyPtr pMtx= nullptr)
+	const std::string &fmt =DEFAULT_TIME_PRECISE_FMT, TyPtr pMtx= nullptr)
 {
 	return TimeToStr<c_decimalBit>(tmpt.time_since_epoch(),
 		bLocal, bThdSafe, fmt, pMtx);
 }
 
-//由timeval转化为格式化字符串，格式中添加%@表示小数部分（带小数点）
+//由timeval转化为格式化字符串，格式中添加%@表示小数部分（不带小数点）
 template<int c_decimalBit, typename TyPtr= std::mutex *>
 inline std::string TimeToStr(const timeval &tmval, bool bLocal= true,
-	bool bThdSafe= false, const std::string &fmt ="%F %T%@", TyPtr pMtx= nullptr)
+	bool bThdSafe= false, const std::string &fmt =DEFAULT_TIME_PRECISE_FMT, TyPtr pMtx= nullptr)
 {
 	return TimeToStr<c_decimalBit>(TimevalToDuration(tmval), bLocal, bThdSafe, fmt, pMtx);
 }
@@ -1660,17 +1836,17 @@ inline std::string TimeToStr(const timeval &tmval, bool bLocal= true,
 //将当前时间转化为字符串
 template<typename TyPtr= std::mutex *>
 inline std::string NowTimeToStr(bool bLocal= true, bool bThdSafe= false,
-	const std::string &fmt ="%F %T", TyPtr pMtx= nullptr)
+	const std::string &fmt =DEFAULT_TIME_FMT, TyPtr pMtx= nullptr)
 {
 	return TimeToStr(std::chrono::system_clock::now(),
 		bLocal, bThdSafe, fmt, pMtx);
 }
 
 //高精度将当前时间转化为字符串，由实现保证正确性
-//DecimalBit为负则自动推断小数位数，非负则设定小数位数，格式中添加%@表示小数部分（带小数点）
+//DecimalBit为负则自动推断小数位数，非负则设定小数位数，格式中添加%@表示小数部分（不带小数点）
 template<int c_decimalBit, typename TyPtr= std::mutex *>
-inline std::string NowTimeToStr(bool bLocal= true, bool bThdSafe= false,
-	const std::string &fmt ="%F %T%@", TyPtr pMtx= nullptr)
+inline std::string NowTimeToPreciseStr(bool bLocal= true, bool bThdSafe= false,
+	const std::string &fmt =DEFAULT_TIME_PRECISE_FMT, TyPtr pMtx= nullptr)
 {
 	return TimeToStr<c_decimalBit>(std::chrono::system_clock::now(),
 		bLocal, bThdSafe, fmt, pMtx);
@@ -1760,7 +1936,7 @@ inline bool FromStringNoError(TyIter itSt, TyIter itEd, Ty &num)
 //整形数字转化字符串，带有千位分隔符
 template<typename Ty>
 inline typename std::enable_if<std::is_integral<Ty>::value, std::string
->::type GapToString(Ty num, int gap= 3, char ch= '\'')
+>::type NumAddGapToStr(Ty num, int gap= 3, char ch= '\'')
 {
 	std::string str;
 	//取正
@@ -1873,13 +2049,14 @@ inline bool WstrToStr(std::string &str, const std::wstring &wstr,
 
 
 //二进制字符串文本显示
+//可打印字符不变，常见转义字符进行转义，不常见转义字符16进制转义
 inline std::string StrBinToText(const std::string &str)
 {
 	std::string strRet;
 	//对每个字符判断
 	for(unsigned ch : str) {
 		//ascii
-		if(ch>=0x00 && ch<=0x7F) {
+		if(IsAsciiChar(ch)) {
 			//转义字符
 			if(ch=='\r')
 				strRet += "\\r";
@@ -1899,6 +2076,8 @@ inline std::string StrBinToText(const std::string &str)
 				strRet += "\\\'";
 			else if(ch=='\"')
 				strRet += "\\\"";
+			else if(ch=='\0')
+				strRet += "\\0";
 			else if(ch=='\\')
 				strRet += "\\\\";
 			//可打印字符
@@ -1906,7 +2085,8 @@ inline std::string StrBinToText(const std::string &str)
 				strRet += ch;
 			//不可打印字符
 			else {
-				strRet <<"\\x" <<HexToUppChar(ch/16) <<HexToUppChar(ch%16);
+				strRet <<"\\x" <<NumToUppHexChar((unsigned)ch/16)
+					<<NumToUppHexChar((unsigned)ch%16);
 			}
 		}
 		//非ascii
@@ -1918,13 +2098,14 @@ inline std::string StrBinToText(const std::string &str)
 }
 
 //转义字符串二进制显示
+//可打印字符不变，常见转义字符和16进制进行恢复
 inline std::string StrTextToBin(const std::string &str)
 {
 	std::string strRet;
 	//对每个字符判断
 	for(unsigned i=0; i<str.size(); ++i) {
 		//ascii
-		if(str[i]>=0x00 && str[i]<=0x7F) {
+		if(IsAsciiChar(str[i])) {
 			//转义字符
 			if(str[i]=='\\') {
 				++ i;
@@ -1948,12 +2129,14 @@ inline std::string StrTextToBin(const std::string &str)
 						strRet += "\'";
 					else if(str[i]=='\"')
 						strRet += "\"";
+					else if(str[i]=='0')
+						strRet += "\0";
 					else if(str[i]=='\\')
 						strRet += "\\";
 					//16进制数字转义
 					else if(str[i]=='x') {
-						if(i+2<str.size() && CharIsHex(str[i+1]) && CharIsHex(str[i+2]))
-							strRet += CharToHex(str[i+1])*16+CharToHex(str[i+2]);
+						if(i+2<str.size() && IsHexChar(str[i+1]) && IsHexChar(str[i+2]))
+							strRet += HexCharToNum(str[i+1])*16+HexCharToNum(str[i+2]);
 						i+=2;
 					}
 					//无法识别转义

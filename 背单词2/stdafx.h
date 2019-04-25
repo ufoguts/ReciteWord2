@@ -5,6 +5,10 @@
 
 #pragma once
 
+//屏蔽时间转换警告
+#define _CRT_SECURE_NO_WARNINGS
+
+
 #include "targetver.h"
 
 #include <stdio.h>

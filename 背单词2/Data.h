@@ -4,20 +4,20 @@
 /*
 改动业务逻辑框架
 加入undo功能
-格式化加入存储表名
-改更新函数的存储表名依赖
-改词汇表搜索功能
 */
 
 //文件夹名
 #define DATA_DIR_NAME "data"//数据文件夹
 #define DATA_DIR_PATH "./" DATA_DIR_NAME//数据路径
+#define DATA_DIR_PREFIX DATA_DIR_PATH "/"//数据路径前缀
 #define DATA_FILE_EXT ".dat"//数据后缀名
 #define INPUT_DIR_NAME "input"//输入文件夹
 #define INPUT_DIR_PATH "./" INPUT_DIR_NAME//输入路径
+#define INPUT_DIR_PREFIX INPUT_DIR_PATH "/"//输入路径前缀
 #define INPUT_FILE_EXT ".txt"//数据后缀名
 #define OUPPUT_DIR_NAME "output"//输出文件夹
 #define OUPPUT_DIR_PATH "./" OUPPUT_DIR_NAME//输出路径
+#define OUPPUT_DIR_PREFIX OUPPUT_DIR_PATH "/"//输出路径前缀
 #define OUPPUT_FILE_EXT ".txt"//数据后缀名
 
 //特殊单词表
@@ -30,6 +30,7 @@
 #define TAB_BLANK "     "//统一使用的空白符，5个空格
 #define LONG_TAB_BLANK "        "//统一使用的双倍空白符，8个空格
 #define OUT_BLANK ":    "//统一使用指出的空白符，冒号和4和空格
+#define CLEAR_ENTER "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"//清屏用，15个回车
 
 
 //单词
@@ -97,20 +98,18 @@ inline void ItemIndexToListNameSet(ListNameSet &listName, TyIt st, TyIt ed)
 }
 
 
-//大小写规范字符串转换
+//大小写规范字符串转换，使用下划线做转义字符
 inline string FormToStr(const string &str)
 {
 	string strRes;
 	bool bFlag = false;
 	for(auto ch : str) {
-		if(ch=='-') {
+		if(!bFlag && ch=='_') {
 			bFlag = true;
 		}
-		else {
-			if(ch>='A' && ch<='Z')
-				ch = 'a'+(ch-'A');
-			if(bFlag && ch>='a' && ch<='z')
-				ch = 'A'+(ch-'a');
+		else if(IsNumChar(ch) || IsLowChar(ch) || ch=='_') {
+			if(bFlag && IsLowChar(ch))
+				ch = LowCharToUppChar(ch);
 			strRes <<ch;
 			bFlag = false;
 		}
@@ -122,10 +121,12 @@ inline string StrToForm(const string &str)
 	string strRes;
 	bool bFlag = false;
 	for(auto ch : str) {
-		if(ch>='A' && ch<='Z') {
-			strRes <<'-';
-			ch = 'a'+(ch-'A');
+		if(IsUppChar(ch)) {
+			strRes <<'_';
+			ch = UppCharToLowChar(ch);
 		}
+		else if(ch=='_')
+			strRes <<'_';
 		strRes <<ch;
 	}
 	return strRes;
@@ -161,7 +162,7 @@ inline bool CinGetLineJudgeBlank(string *pstr= nullptr)
 	if(pstr==nullptr)
 		pstr = &strTmp;
 	std::getline(cin, *pstr);
-	return std::find_if(pstr->begin(), pstr->end(), CharIsNotBlank)
+	return std::find_if(pstr->begin(), pstr->end(), IsNotBlankChar)
 		!= pstr->end();
 }
 
@@ -192,7 +193,7 @@ inline bool CinGetRegexIndex(regex &rgx, int &index)
 	while(true) {
 		if(!(cin >>index >>endl))
 			return false;
-		if(index<0 || IntLTE(index, rgx.mark_count())) {
+		if(index<0 || IntGT(index, rgx.mark_count())) {
 			cout <<"编号不符合范围，重新输入: \n";
 			continue;
 		}
