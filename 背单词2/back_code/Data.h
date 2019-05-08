@@ -1,10 +1,9 @@
 #pragma once
 
 
-/*TODO
+/*
 改动业务逻辑框架
 加入undo功能
-抽象出搜索文件，搜索词汇表的代码
 */
 
 //文件夹名
@@ -64,52 +63,33 @@ BinWriteFile &operator <<(BinWriteFile &bwf, const Word &word)
 	return bwf <<word.english <<word.chinese;
 }
 
-using ListType = SequenceMultiSet<Word>;//单词表类型
-using LibraryType = map<string, ListType>;//单词库类型
+using ListType = map<string, vector<Word>>;//单词表类型
 using ListNameSet = set<string>;//单词表名记录集合
 
 
 //单词位置索引类
 struct ItemIndex
 {
-	LibraryType::iterator itList;//词表迭代器
-	ListType::Iter itWord;//词表内迭代器
+	ListType::iterator itList;//词表迭代器
+	int idx;//词表内位置
 	ItemIndex()
 		= default;
-	ItemIndex(LibraryType::iterator O_(itList), ListType::Iter O_(itWord)):
-		O_INIT_MOVE(itList), O_INIT(itWord)
+	ItemIndex(ListType::iterator O_(itList), int O_(idx)):
+		O_INIT_MOVE(itList), O_INIT(idx)
 	{
 	}
 	//访问函数
-	const Word &operator *() const
+	Word &operator *() const
 	{
-		return *itWord;
+		return itList->second[idx];
 	}
-	const Word *operator ->() const
+	Word *operator ->() const
 	{
-		return &operator *();
-	}
-	//修改
-	template<typename Ty>
-	typename std::enable_if<IsRemoveCVRefSame<Word, Ty>::value, void
-	>::type Modify(Ty &&word) const
-	{
-		itList->second.Modify(itWord, std::forward<Ty>(word));
-	}
-	template<typename Ty>
-	typename std::enable_if<IsRemoveCVRefSame<Word, Ty>::value, bool
-	>::type TryModify(Ty &&word) const
-	{
-		auto itFind = itList->second.Find(GetConstRef(word));
-		if(itFind!=itList->second.ValueEnd() && itFind.GetIter()!=itWord)
-			return false;
-		Modify(std::forward<Ty>(word));
-		return true;
+		return &itList->second[idx];
 	}
 };
 
 
-//将迭代器范围内的名字导入名字集合
 template<typename TyIt>
 inline void ItemIndexToListNameSet(ListNameSet &listName, TyIt st, TyIt ed)
 {
@@ -118,7 +98,7 @@ inline void ItemIndexToListNameSet(ListNameSet &listName, TyIt st, TyIt ed)
 }
 
 
-//大小写规范字符串转换，使用下划线做转义字符，读写文件用
+//大小写规范字符串转换，使用下划线做转义字符
 inline string FormToStr(const string &str)
 {
 	string strRes;
@@ -153,12 +133,15 @@ inline string StrToForm(const string &str)
 }
 
 
-//查找重复并添加单词
-inline bool ListAddWord(ListType &list, const Word &word)
+inline bool CanListAddWord(vector<Word> &list, const Word &word)
 {
-	if(list.Count(word)!=0)
+	return std::find(list.begin(), list.end(), word)==list.end();
+}
+inline bool ListAddWord(vector<Word> &list, const Word &word)
+{
+	if(!CanListAddWord(list, word))
 		return false;
-	list.PushBack(word);
+	list.push_back(word);
 	return true;
 }
 
@@ -241,133 +224,75 @@ ostream &operator <<(ostream &os, const PrintWord &word)
 class PrintIndexWord
 {
 public:
+	const vector<Word> &ref;
 	int idx;
-	const Word &ref;
 public:
-	explicit PrintIndexWord(int O_(idx), const Word &O_(ref)):
-		O_INIT(idx), O_INIT(ref)
+	explicit PrintIndexWord(const vector<Word> &O_(ref), int O_(idx)):
+		O_INIT(ref), O_INIT(idx)
 	{
 	}
 };
 ostream &operator <<(ostream &os, const PrintIndexWord &word)
 {
-	os <<(word.idx+1) <<OUT_BLANK <<PrintWord(word.ref);
+	os <<(word.idx+1) <<OUT_BLANK <<PrintWord(word.ref[word.idx]);
 	return os;
 }
 
-//打印范围的序号和单词辅助类，末尾没有回车
-class PrintRangeIndexWord
+//打印表名，序号和单词辅助类
+class PrintListIndexWord
 {
 public:
-	const ListType &ref;
-	int st;
-	int ed;
+	ListType::iterator ref;
+	int idx;
 public:
-	explicit PrintRangeIndexWord(ListType &O_(ref), int O_(st), int O_(ed)):
-		O_INIT(ref), O_INIT(st), O_INIT(ed)
+	explicit PrintListIndexWord(ListType::iterator O_(ref), int O_(idx))
+		:
+		O_INIT_MOVE(ref), O_INIT(idx)
+	{
+	}
+	explicit PrintListIndexWord(const ItemIndex &o_index):
+		ref(o_index.itList), idx(o_index.idx)
 	{
 	}
 };
-ostream &operator <<(ostream &os, const PrintRangeIndexWord &word)
+ostream &operator <<(ostream &os, const PrintListIndexWord &word)
 {
-	bool bFirst = true;
-	if(word.st!=0) {
-		cout <<PrintIndexWord(0, word.ref.Front()) <<"\n"
-			<<"...";
-		bFirst = false;
-	}
-	auto itWord = word.ref.GetIter(word.st);
-	for(int i=word.st; i<word.ed; ++i, ++itWord) {
-		if(!bFirst)
-			cout <<"\n";
-		bFirst = false;
-		cout <<PrintIndexWord(i, *itWord);
-	}
-	if(word.ed!=word.ref.Size()) {
-		if(!bFirst)
-			cout <<"\n";
-		bFirst = false;
-		cout <<"...\n"
-			<<PrintIndexWord(word.ref.Size()-1, word.ref.Back());
-	}
+	os <<word.ref->first <<" - " <<PrintIndexWord(word.ref->second, word.idx);
 	return os;
 }
 
-//打印序号和单词辅助类，序号是查找而来
-class PrintFindIndexWord
-{
-public:
-	const ListType &ref;
-	ListType::Iter it;
-public:
-	explicit PrintFindIndexWord(const ListType &O_(ref),
-		ListType::Iter O_(it)
-	): O_INIT(ref), O_INIT(it)
-	{
-	}
-};
-ostream &operator <<(ostream &os, const PrintFindIndexWord &word)
-{
-	os <<(word.ref.GetIndex(word.it)+1) <<OUT_BLANK <<PrintWord(*word.it);
-	return os;
-}
-
-//打印表名，序号和单词辅助类，序号是查找而来
-class PrintListFindIndexWord
-{
-public:
-	LibraryType::iterator ref;
-	ListType::Iter it;
-public:
-	explicit PrintListFindIndexWord(LibraryType::iterator O_(ref),
-		ListType::Iter O_(it)
-	): O_INIT_MOVE(ref), O_INIT(it)
-	{
-	}
-	explicit PrintListFindIndexWord(const ItemIndex &o_index):
-		ref(o_index.itList), it(o_index.itWord)
-	{
-	}
-};
-ostream &operator <<(ostream &os, const PrintListFindIndexWord &word)
-{
-	os <<word.ref->first <<" - " <<PrintFindIndexWord(word.ref->second, word.it);
-	return os;
-}
-
-//打印项索引，即表名和索引，不包括单词
-class PrintItemFindIndex
+//打印项索引
+class PrintItemIndex
 {
 public:
 	const ItemIndex &ref;
 public:
-	explicit PrintItemFindIndex(const ItemIndex &O_(ref)):
+	explicit PrintItemIndex(const ItemIndex &O_(ref)):
 		O_INIT(ref)
 	{
 	}
 };
-ostream &operator <<(ostream &os, const PrintItemFindIndex &word)
+ostream &operator <<(ostream &os, const PrintItemIndex &word)
 {
-	os <<"(" <<word.ref.itList->first <<","
-		<<(word.ref.itList->second.GetIndex(word.ref.itWord)+1) <<")";
+	os <<"(" <<word.ref.itList->first <<"," <<word.ref.idx+1 <<")";
 	return os;
 }
 
 //打印项索引向量
-class PrintItemFindIndexVector
+class PrintItemIndexVector
 {
 public:
 	const vector<ItemIndex> &ref;
 public:
-	explicit PrintItemFindIndexVector(const vector<ItemIndex> &O_(ref)):
+	explicit PrintItemIndexVector(const vector<ItemIndex> &O_(ref)):
 		O_INIT(ref)
 	{
 	}
 };
-ostream &operator <<(ostream &os, const PrintItemFindIndexVector &word)
+ostream &operator <<(ostream &os, const PrintItemIndexVector &word)
 {
 	for(int i=0; i!=word.ref.size(); ++i) {
-		os <<PrintItemFindIndex(word.ref[i]);
+		os <<PrintItemIndex(word.ref[i]);
 		if(i!=word.ref.size()-1)
 			os <<",";
 	}

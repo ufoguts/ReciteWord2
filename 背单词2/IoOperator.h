@@ -8,12 +8,13 @@
 #include <iostream>
 #include <fstream>
 
-#include<limits>
+#include <limits>
 #include <type_traits>
 #include <algorithm>
 #include <initializer_list>
 #include <utility>
 #include <tuple>
+#include <iterator>
 
 #include <string>
 #include <vector>
@@ -31,23 +32,33 @@
 #include <mutex>
 
 
-//差输入函数对回车检测的封装
 
 
-#define _IOOPERATOR_COPY_ASSIGN(Type, other) {\
-	if(this!=&(other)) {\
-		this->~Type();\
-		new(this) Type(other);\
-	}\
-	return *this;}//拷贝赋值
+//先去除引用再去除常数易变属性
+template<typename Ty>
+struct _IoOperatorRemoveCVRef
+{
+	using type = typename std::remove_cv<typename std::remove_reference<Ty>::type>::type;
+};
 
-#define _IOOPERATOR_MOVE_ASSIGN(Type, other) {\
-	if(this!=&(other)) {\
-		this->~Type();\
-		new(this) Type(std::move(other));\
-	}\
-	return *this;}//移动赋值
+//后者去除引用常数易变后是否为前者
+template<typename TyDst, typename TySrc>
+struct _IoOperatorIsRemoveCVRefSame:
+	std::is_same<TyDst, typename _IoOperatorRemoveCVRef<TySrc>::type>
+{
+};
 
+//测试去除常易变易用属性后，是否为字符指针，字符数组或string类型
+template<class Ty>
+struct _IoOperatorIsRemoveCVRefSameSzOrString:
+	std::integral_constant<bool, _IoOperatorIsRemoveCVRefSame<char *, Ty>::value
+	|| _IoOperatorIsRemoveCVRefSame<const char *, Ty>::value
+	|| (std::is_array<typename _IoOperatorRemoveCVRef<Ty>::type>::value
+	&& _IoOperatorIsRemoveCVRefSame<char, typename std::remove_extent<
+	typename _IoOperatorRemoveCVRef<Ty>::type>::type>::value)
+	|| _IoOperatorIsRemoveCVRefSame<std::string, Ty>::value>
+{
+};
 
 //存储某类型，值类型
 template<typename Ty>
@@ -90,14 +101,55 @@ public:
 	}
 };
 
+//字符空白符判断
+inline constexpr bool _IoOperatorCharIsBlank(char ch)
+{
+	return ch==' ' || ch=='\t' || ch=='\r' || ch=='\n'
+		|| ch=='\v' || ch=='\f';
+}
+
+//调用变量的析构函数
+template<typename Ty>
+inline void _IoOperatorCallDestruct(Ty &value)
+{
+	value.~Ty();
+}
 
 
-//输入流读取配置文件，返回未找到的第一个字段
-//会尽可能读取填充配置文件所有字段，即使为空，后者替换前者
-//配置文件格式应为去掉"#define"的宏定义格式，'#'';'都为注释
+
+//按格式读取一行并返回字符串
+inline bool _LineStringToInit(const std::string &strIn, std::string &strField,
+	std::string &strValue)
+{
+	//若"(\t1)abc(\t2)(\t3)def(\t4)(\t5)ghi\r\n"
+	//找有效字符头
+	auto itSt = std::find_if_not(strIn.begin(), strIn.end(), _IoOperatorCharIsBlank);//a
+	//判断空或注释'#'';'"//"
+	if(itSt==strIn.end() || *itSt=='#' || *itSt==';'
+		||(*itSt=='/' && itSt+1!=strIn.end() && itSt[1]=='/'))
+		return false;
+	//找字段尾，不要求后续
+	auto itGap = std::find_if(itSt+1, strIn.end(), _IoOperatorCharIsBlank);//\t2
+	strField.assign(itSt, itGap);
+	//找后续词
+	auto itWordSt = std::find_if_not(itGap, strIn.end(), _IoOperatorCharIsBlank);//d
+	auto ritWordEd = std::find_if_not(strIn.rbegin(),
+		std::string::const_reverse_iterator(itWordSt), _IoOperatorCharIsBlank);//i
+	//存储值，可能为空
+	if(itWordSt!=strIn.end() && itWordSt<ritWordEd.base())
+		strValue.assign(itWordSt, ritWordEd.base());
+	return true;
+}
+
+
+
+//输入流读取配置文件，有预定义字段范围，读取范围内的值，返回未找到的第一个字段
+//配置文件格式应为去掉"#define"的宏定义格式，'#'';'"//"都为注释
+//bReplace是否同一字段后者替换前者，若为重复集合且为否则重复添加
+//bCheckNull是否拒绝读取值为空的情况
 template<typename Ty1, typename Ty2>
-inline Ty2 StreamReadInit(std::istream &is, Ty1 &table,
-	Ty2 itFieldSt, Ty2 itFieldEd, bool bCheckNull =true)
+inline Ty2 StreamReadPredefInit(std::istream &is, Ty1 &table,
+	Ty2 itFieldSt, Ty2 itFieldEd, bool bReplace= true, bool bCheckNull= true)
 {
 	//将关键字段写入
 	Ty2 itField;
@@ -105,33 +157,18 @@ inline Ty2 StreamReadInit(std::istream &is, Ty1 &table,
 	for(itField=itFieldSt; itField!=itFieldEd; ++itField) {
 		bstField.emplace(*itField);
 	}
-	auto lbdIsBlank = [](char ch) {
-		return ch==' ' || ch=='\t' || ch=='\r' || ch=='\n';
-	};
-	//若"(\t1)abc(\t2)(\t3)def(\t4)(\t5)ghi\r\n"
 	//从流读取关键字段
-	std::string str;
-	while(std::getline(is, str)) {
-		std::string strField;
-		//找有效字符头
-		auto itSt = std::find_if_not(str.begin(), str.end(), lbdIsBlank);//a
-		//判断注释
-		if(itSt==str.end() || *itSt=='#' || *itSt==';')
+	std::string strIn, strField, strValue;
+	while(std::getline(is, strIn)) {
+		//解析行存入对应字符串
+		if(!_LineStringToInit(strIn, strField, strValue))
 			continue;
-		//找字段尾，不要求后续
-		auto itGap = std::find_if(itSt+1, str.end(), lbdIsBlank);//\t2
-		strField.assign(itSt, itGap);
 		//判断在表中
 		if(bstField.find(strField)==bstField.end())
 			continue;
-		//找后续词
-		auto itWordSt = std::find_if_not(itGap, str.end(), lbdIsBlank);//d
-		auto ritWordEd = std::find_if_not(str.rbegin(),
-			std::string::reverse_iterator(itWordSt), lbdIsBlank);//i
-		//存储值，可能为空
-		string strValue;
-		if(itWordSt!=str.end() && itWordSt<ritWordEd.base())
-			strValue.assign(itWordSt, ritWordEd.base());
+		//判断值为空
+		if(bCheckNull && strValue.empty())
+			continue;
 		//替换模式下
 		if(bReplace) {
 			auto itRes = table.find(strField);
@@ -139,7 +176,6 @@ inline Ty2 StreamReadInit(std::istream &is, Ty1 &table,
 				table.emplace(std::move(strField), std::move(strValue));
 			else
 				itRes->second = std::move(strValue);
-				
 		}
 		//无动作模式下
 		else {
@@ -151,41 +187,30 @@ inline Ty2 StreamReadInit(std::istream &is, Ty1 &table,
 		std::string strTmp = *itField;
 		auto res = table.find(strTmp);
 		//若没找到字段或检查空且字段空
-		if(res==table.end() || (bCheckNull && res->second.empty()))
+		if(res==table.end())
 			break;
 	}
 	return itField;
 }
 
 
-//输入流读取配置文件，无预置字段范围，返回读取个数
-//替换或无动作，使用可重复集合时无动作为重复添加
-//配置文件格式应为去掉"#define"的宏定义格式，'#'';'都为注释
+//输入流读取配置文件，无预定义字段范围，读取所有文件的值，返回读取个数
+//配置文件格式应为去掉"#define"的宏定义格式，'#'';'"//"都为注释
+//bReplace是否同一字段后者替换前者，若为重复集合且为否则重复添加
+//bCheckNull是否拒绝读取值为空的情况
 template<typename Ty1>
 inline int StreamReadAllInit(std::istream &is, Ty1 &table,
-	bool bReplace =true)
+	bool bReplace= true, bool bCheckNull= true)
 {
-	//若"(\t1)abc(\t2)(\t3)def(\t4)(\t5)ghi\r\n"
 	//从流读取关键字段
-	std::string str;
-	while(std::getline(is, str)) {
-		std::string strField;
-		//找有效字符头
-		auto itSt = std::find_if_not(str.begin(), str.end(), lbdIsBlank);//a
-		//判断注释
-		if(itSt==str.end() || *itSt=='#' || *itSt==';')
+	std::string strIn, strField, strValue;
+	while(std::getline(is, strIn)) {
+		//解析行存入对应字符串
+		if(!_LineStringToInit(strIn, strField, strValue))
 			continue;
-		//找字段尾，不要求后续
-		auto itGap = std::find_if(itSt+1, str.end(), lbdIsBlank);//\t2
-		strField.assign(itSt, itGap);
-		//找后续词
-		auto itWordSt = std::find_if_not(itGap, str.end(), lbdIsBlank);//d
-		auto ritWordEd = std::find_if_not(str.rbegin(),
-			std::string::reverse_iterator(itWordSt), lbdIsBlank);//i
-		//存储值，可能为空
-		string strValue;
-		if(itWordSt!=str.end() && itWordSt<ritWordEd.base())
-			strValue.assign(itWordSt, ritWordEd.base());
+		//判断值为空
+		if(bCheckNull && strValue.empty())
+			continue;
 		//替换模式下
 		if(bReplace) {
 			auto itRes = table.find(strField);
@@ -193,15 +218,15 @@ inline int StreamReadAllInit(std::istream &is, Ty1 &table,
 				table.emplace(std::move(strField), std::move(strValue));
 			else
 				itRes->second = std::move(strValue);
-				
 		}
 		//无动作模式下
 		else {
 			table.emplace(std::move(strField), std::move(strValue));
 		}
 	}
-	return table.size();
+	return (int)table.size();
 }
+
 
 
 //输入流辅助函数
@@ -321,6 +346,11 @@ public:
 
 
 
+//输出流集合无锁标志，作为流输出表示无锁
+class OstreamSetNoLock
+{
+};
+
 //输出流集合类
 //用于多个输出流同时输出，支持非流引用返回值的传递流操作
 //附加互斥锁功能接口，要求参数可锁类型，同时此类也满足可锁
@@ -332,11 +362,6 @@ public:
 	//输出集合传递类型
 	template<typename TyRes>
 	class Hold;
-	//标志类型，作为流输出表示无锁
-	class NoLock
-	{
-	};
-private:
 
 public:
 	std::vector<std::ostream *> vecPOs;//输出流，更改非线程安全
@@ -358,9 +383,8 @@ public:
 		= default;
 	//列表构造
 	explicit OstreamSet(std::initializer_list<std::ostream *> intlOs,
-		std::initializer_list<TyMtx *> intlMtx = {})
-		:
-		vecPOs(intlOs), vecPMtx(intlMtx)
+		std::initializer_list<TyMtx *> intlMtx = {}
+	): vecPOs(intlOs), vecPMtx(intlMtx)
 	{
 	}
 	//迭代器构造
@@ -418,7 +442,7 @@ public:
 		return operator << <decltype((func))>(func);
 	}
 	//对不锁标志进行流操作，流输出将不进行锁定和解锁
-	Hold<std::ostream &> operator <<(NoLock) const
+	Hold<std::ostream &> operator <<(OstreamSetNoLock) const
 	{
 		//流结果类型数组
 		using TyRes = std::ostream &;
@@ -503,9 +527,8 @@ private:
 private:
 	//构造，输出集合引用初始化
 	explicit Hold(std::vector<_IoOperatorTypeHold<TyRes>> &&o_vecRes,
-		const OstreamSet<TyMtx> *o_pSet)
-		:
-		vecRes(std::move(o_vecRes)), pSet(o_pSet)
+		const OstreamSet<TyMtx> *o_pSet
+	): vecRes(std::move(o_vecRes)), pSet(o_pSet)
 	{
 	}
 	//删除拷贝
@@ -514,14 +537,18 @@ private:
 	Hold &operator =(const Hold &)
 		= delete;
 	//移动操作，移出数据不需析构解锁标志
-	Hold(Hold &&other):
-		vecRes(std::move(other.vecRes)), pSet(other.pSet)
+	Hold(Hold &&other) noexcept
 	{
-		other.pSet = nullptr;
+		this->operator =(std::move(other));
 	}
-	Hold &operator =(Hold &&other)
+	Hold &operator =(Hold &&other) noexcept
 	{
-		_IOOPERATOR_MOVE_ASSIGN(Hold, other);
+		if(this!=&other) {
+			vecRes = std::move(other.vecRes);
+			pSet = std::move(other.pSet);
+			other.pSet = nullptr;
+		}
+		return *this;
 	}
 public:
 	//析构函数，根据标志进行解锁，反序解锁
@@ -576,21 +603,21 @@ public:
 
 
 
+//断言操作类输出选项
+enum class AssertOption
+{
+	thrw_log,//抛出异常并输出日志
+	thrw,//抛出异常
+	asst_log,//调试断言并输出日志
+	asst,//调试断言
+	log,//输出日志
+	none,//无操作
+};
+
 //断言操作类
-template<typename TyOs =OstreamSet<>>
+template<typename TyOs>
 class AssertOperator
 {
-public:
-	//输出选项
-	enum class Option
-	{
-		thrw_log,//抛出异常并输出日志
-		thrw,//抛出异常
-		asst_log,//调试断言并输出日志
-		asst,//调试断言
-		log,//输出日志
-		none,//无操作
-	};
 private:
 	//非捕获异常
 	class NoCatchError:
@@ -612,78 +639,49 @@ private:
 private:
 	TyOs &os;//输出类
 public:
-	Option option;//输出选项
+	AssertOption option;//输出选项
 
 public:
 	//构造
-	explicit AssertOperator(TyOs &o_os, Option o_option):
+	AssertOperator() =
+		delete;
+	explicit AssertOperator(TyOs &o_os, AssertOption o_option):
 		os(o_os), option(o_option)
 	{
 	}
 public:
 	//指定选项进行断言
-	bool operator()(Option optionTmp, bool bCond, const std::string &str) const
+	bool operator()(AssertOption optionTmp,
+		bool bCond, const std::string &str= "") const
 	{
 		if(bCond)
 			return true;
 		//按选项进行操作
-		if(optionTmp==Option::thrw_log) {
+		if(optionTmp==AssertOption::thrw_log) {
 			os <<str <<flush;
 			throw NoCatchError(str);
 		}
-		else if(optionTmp==Option::thrw) {
+		else if(optionTmp==AssertOption::thrw) {
 			throw NoCatchError(str);
 		}
-		else if(optionTmp==Option::asst_log) {
+		else if(optionTmp==AssertOption::asst_log) {
 			os <<str <<flush;
 			assert(false);
 		}
-		else if(optionTmp==Option::asst) {
+		else if(optionTmp==AssertOption::asst) {
 			assert(false);
 		}
-		else if(optionTmp==Option::log) {
+		else if(optionTmp==AssertOption::log) {
 			os <<str <<flush;
 		}
-		else if(optionTmp==Option::none) {
+		else if(optionTmp==AssertOption::none) {
 		}
 		return false;
 	}
 	//使用默认选项进行断言
-	bool operator()(bool bCond, const std::string &str) const
+	bool operator()(bool bCond, const std::string &str= "") const
 	{
 		return operator()(option, bCond, str);
-	}
-	//指定选项进行无参数断言
-	bool Omit(Option optionTmp, bool bCond) const
-	{
-		if(bCond)
-			return true;
-		//按选项进行操作
-		if(optionTmp==Option::thrw_log) {
-			os <<flush;
-			throw NoCatchError();
-		}
-		else if(optionTmp==Option::thrw) {
-			throw NoCatchError();
-		}
-		else if(optionTmp==Option::asst_log) {
-			os <<flush;
-			assert(false);
-		}
-		else if(optionTmp==Option::asst) {
-			assert(false);
-		}
-		else if(optionTmp==Option::log) {
-			os <<flush;
-		}
-		else if(optionTmp==Option::none) {
-		}
-		return false;
-	}
-	//使用默认选项进行无参数断言
-	bool Omit(bool bCond) const
-	{
-		return Omit(option, bCond);
 	}
 };
 
@@ -782,11 +780,28 @@ public:
 		return ofs.tellp();
 	}
 	//对缓冲区进行文件写入
-	BinWriteFile &Write(void *buf, size_t size)
+	BinWriteFile &WriteBuf(const void *buf, size_t size)
 	{
-		ofs.write(reinterpret_cast<char *>(buf), size);
+		ofs.write(reinterpret_cast<const char *>(buf), size);
 		if(ofs.bad())
 			throw std::runtime_error("Can't Write File");
+		return *this;
+	}
+	//对内置类型数组进行读取
+	template<typename Ty>
+	typename std::enable_if<std::is_scalar<Ty>::value, BinWriteFile &
+	>::Type WriteArray(const Ty *pt, size_t count)
+	{
+		WriteBuf(pt, sizeof(Ty)*count);
+		return *this;
+	}
+	//对非内置类型数组进行读取
+	template<typename Ty>
+	typename std::enable_if<!std::is_scalar<Ty>::value, BinWriteFile &
+	>::Type WriteArray(const Ty *pt, size_t count)
+	{
+		for(; count!=0; --count, ++pt)
+			*this <<*pt;
 		return *this;
 	}
 	//写文件运算符重载
@@ -796,16 +811,14 @@ public:
 		TypeWrite(r);
 		return *this;
 	}
-private:
+public:
 	//对内置类型进行文件写入，包括内置类型数组
 	template<typename Ty>
 	typename std::enable_if<std::is_scalar<
 		typename std::remove_all_extents<Ty>::type>::value, void
 	>::type TypeWrite(const Ty &r)
 	{
-		ofs.write(reinterpret_cast<const char *>(&r), sizeof(r));
-		if(ofs.bad())
-			throw std::runtime_error("Can't Write File");
+		WriteBuf(&r, sizeof(r));
 	}
 	//对非内置类型数组进行文件写入
 	template<typename Ty, size_t N>
@@ -813,7 +826,7 @@ private:
 		typename std::remove_all_extents<Ty>::type>::value, void
 	>::type TypeWrite(const Ty (&arrStr)[N])
 	{
-		for(int i=0; i<N; ++i)
+		for(int64_t i=0; i<N; ++i)
 			*this <<arrStr[i];
 	}
 	//对pair进行文件写入
@@ -847,9 +860,7 @@ private:
 		int64_t size = str.size();
 		TypeWrite(size);
 		//写数据
-		ofs.write(reinterpret_cast<const char *>(&str[0]), size*sizeof(Ty));
-		if(ofs.bad())
-			throw std::runtime_error("Can't Write File");
+		WriteBuf(&str[0], (size_t)(size*sizeof(Ty)));
 	}
 	//对vector内置类型进行文件写入
 	template<typename Ty>
@@ -860,7 +871,7 @@ private:
 		int64_t size = vec.size();
 		TypeWrite(size);
 		//写数据
-		ofs.write(reinterpret_cast<const char *>(vec.data()), size*sizeof(Ty));
+		WriteBuf(vec.data(), size*sizeof(Ty));
 	}
 	//对vector非内置类型进行文件写入
 	template<typename Ty>
@@ -880,7 +891,7 @@ private:
 	>::type TypeWrite(const std::array<Ty, c_size> &arr)
 	{
 		//写数据
-		ofs.write(reinterpret_cast<const char *>(arr.data()), c_size*sizeof(Ty));
+		WriteBuf(arr.data(), c_size*sizeof(Ty));
 	}
 	//对array非内置类型进行文件写入
 	template<typename Ty, size_t c_size>
@@ -914,8 +925,19 @@ private:
 			*this <<r;
 	}
 	//对二叉树进行文件写入
-	template<typename Ty>
-	void TypeWrite(const std::set<Ty> &bst)
+	template<typename Ty, typename TyComp>
+	void TypeWrite(const std::set<Ty, TyComp> &bst)
+	{
+		//写尺寸
+		int64_t size = bst.size();
+		TypeWrite(size);
+		//写数据
+		for(auto &r : bst)
+			*this <<r;
+	}
+	//对多值二叉树进行文件写入
+	template<typename Ty, typename TyComp>
+	void TypeWrite(const std::multiset<Ty, TyComp> &bst)
 	{
 		//写尺寸
 		int64_t size = bst.size();
@@ -925,8 +947,19 @@ private:
 			*this <<r;
 	}
 	//对二叉树对进行文件写入
-	template<typename Ty1, typename Ty2>
-	void TypeWrite(const std::map<Ty1, Ty2> &bst)
+	template<typename Ty1, typename Ty2, typename TyComp>
+	void TypeWrite(const std::map<Ty1, Ty2, TyComp> &bst)
+	{
+		//写尺寸
+		int64_t size = bst.size();
+		TypeWrite(size);
+		//写数据
+		for(auto &r : bst)
+			*this <<r.first <<r.second;
+	}
+	//对多值二叉树对进行文件写入
+	template<typename Ty1, typename Ty2, typename TyComp>
+	void TypeWrite(const std::multimap<Ty1, Ty2, TyComp> &bst)
 	{
 		//写尺寸
 		int64_t size = bst.size();
@@ -936,8 +969,19 @@ private:
 			*this <<r.first <<r.second;
 	}
 	//对哈希表进行文件写入
-	template<typename Ty>
-	void TypeWrite(const std::unordered_set<Ty> &htb)
+	template<typename Ty, typename TyHash, typename TyComp>
+	void TypeWrite(const std::unordered_set<Ty, TyHash, TyComp> &htb)
+	{
+		//写尺寸
+		int64_t size = htb.size();
+		TypeWrite(size);
+		//写数据
+		for(auto &r : htb)
+			*this <<r;
+	}
+	//对多值哈希表进行文件写入
+	template<typename Ty, typename TyHash, typename TyComp>
+	void TypeWrite(const std::unordered_multiset<Ty, TyHash, TyComp> &htb)
 	{
 		//写尺寸
 		int64_t size = htb.size();
@@ -947,8 +991,19 @@ private:
 			*this <<r;
 	}
 	//对哈希表对进行文件写入
-	template<typename Ty1, typename Ty2>
-	void TypeWrite(const std::unordered_map<Ty1, Ty2> &htb)
+	template<typename Ty1, typename Ty2, typename TyHash, typename TyComp>
+	void TypeWrite(const std::unordered_map<Ty1, Ty2, TyHash, TyComp> &htb)
+	{
+		//写尺寸
+		int64_t size = htb.size();
+		TypeWrite(size);
+		//写数据
+		for(auto &r : htb)
+			*this <<r.first <<r.second;
+	}
+	//对多值哈希表对进行文件写入
+	template<typename Ty1, typename Ty2, typename TyHash, typename TyComp>
+	void TypeWrite(const std::unordered_multimap<Ty1, Ty2, TyHash, TyComp> &htb)
 	{
 		//写尺寸
 		int64_t size = htb.size();
@@ -959,22 +1014,73 @@ private:
 	}
 };
 
+//写类型二进制文件类迭代器
+//是输出迭代器
+template<typename Ty>
+class BinWriteFileIter:
+	public std::iterator<std::output_iterator_tag, void,
+	void, void, void>
+{
+private://数据
+	BinWriteFile *pBwf;//关联文件
 
+public://基本函数
+	//没有默认构造
+	BinWriteFileIter()
+		= delete;
+	//关联构造
+	BinWriteFileIter(BinWriteFile &bwf):
+		pBwf(&bwf)
+	{
+	}
+public://运算符重载
+	//解引用操作，返回自身
+	BinWriteFileIter &operator *() const
+	{
+		return *this;
+	}
+	//递增操作，什么也不做，返回自身
+	BinWriteFileIter &operator ++()
+	{
+		return *this;
+	}
+	BinWriteFileIter &operator ++(int)
+	{
+		return *this;
+	}
+	//赋值操作，进行输出
+	BinWriteFileIter &operator =(const Ty &data)
+	{
+		*pBwf <<data;
+		return *this;
+	}
+};
+
+
+template<typename Ty>
+class BinReadFileIter;
 //读类型二进制文件类
 //不同环境的内置类型大小不一定相同，要保证使用大小无关变量
 class BinReadFile
 {
-private:
+public:
 	std::ifstream ifs;//文件流
-	static constexpr int64_t bufSize = 1024;//读取缓存大小
+	bool bFast= false;//快速模式，忽略可能的缓冲区溢出
+	static constexpr int64_t bufSize = 4096;//读取缓存大小
 
 public:
 	//构造
-	BinReadFile()
-		= default;
-	explicit BinReadFile(const std::string &name)
+	explicit BinReadFile(bool o_bFast= false):
+		bFast(o_bFast)
 	{
-		Open(name);
+	}
+	//打开文件构造
+	template<typename Ty, typename= typename std::enable_if<
+		_IoOperatorIsRemoveCVRefSameSzOrString<Ty>::value>::type
+	> explicit BinReadFile(Ty &&name, bool o_bFast= false):
+		bFast(o_bFast)
+	{
+		Open(std::forward<Ty>(name));
 	}
 	//析构
 	~BinReadFile()
@@ -1058,11 +1164,31 @@ public:
 		return ifs.tellg();
 	}
 	//对缓冲区进行文件读取
-	BinReadFile &Read(void *buf, size_t size)
+	BinReadFile &ReadBuf(void *buf, size_t size)
 	{
 		ifs.read(reinterpret_cast<char *>(buf), size);
 		if(ifs.bad())
 			throw std::runtime_error("Read File Bad Error");
+		return *this;
+	}
+	//对内置类型数组进行读取
+	template<typename Ty>
+	typename std::enable_if<std::is_scalar<Ty>::value, BinReadFile &
+	>::Type ReadArray(Ty *pt, size_t count)
+	{
+		ReadBuf(pt, sizeof(Ty)*count);
+		return *this;
+	}
+	//对非内置类型数组进行读取
+	template<typename Ty>
+	typename std::enable_if<!std::is_scalar<Ty>::value, BinReadFile &
+	>::Type ReadArray(Ty *pt, size_t count)
+	{
+		for(; count!=0; --count, ++pt) {
+			if(ifs.fail())
+				return;
+			*this >>*pt;
+		}
 		return *this;
 	}
 	//读文件运算符重载
@@ -1072,15 +1198,14 @@ public:
 		TypeRead(r);
 		return *this;
 	}
+public:
 	//对内置类型进行文件读取，包括内置类型数组
 	template<typename Ty>
 	typename std::enable_if<std::is_scalar<
 		typename std::remove_all_extents<Ty>::type>::value, void
 	>::type TypeRead(Ty &r)
 	{
-		ifs.read(reinterpret_cast<char *>(&r), sizeof(r));
-		if(ifs.bad())
-			throw std::runtime_error("Read File Bad Error");
+		ReadBuf(&r, sizeof(r));
 	}
 	//对非内置类型数组进行文件读取
 	template<typename Ty, size_t N>
@@ -1088,10 +1213,10 @@ public:
 		typename std::remove_all_extents<Ty>::type>::value, void
 	>::type TypeRead(Ty (&arrStr)[N])
 	{
-		for(int i=0; i<N; ++i) {
-			*this >>arrStr[i];
+		for(int64_t i=0; i<N; ++i) {
 			if(ifs.fail())
 				return;
+			*this >>arrStr[i];
 		}
 	}
 	//对pair进行文件读取
@@ -1124,19 +1249,24 @@ public:
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
-		constexpr int64_t perBufSize = bufSize/sizeof(Ty);
-		//读数据
+		if(ifs.fail())
+			return;
 		str.clear();
-		for(; size>0; size-=perBufSize) {
-			int64_t realSize = size<perBufSize? size:perBufSize;
-			auto nowSize = str.size();
-			str.resize((std::basic_string<Ty>::size_type)(nowSize+realSize));
-			ifs.read(reinterpret_cast<char *>(&str[0])+nowSize*sizeof(Ty),
-				realSize*sizeof(Ty));
-			if(ifs.bad())
-				throw std::runtime_error("Read File Bad Error");
-			if(ifs.fail())
-				return;
+		//读数据
+		if(bFast) {
+			str.resize((std::basic_string<Ty>::size_type)size);
+			ReadBuf(&str[0], (size_t)(size*sizeof(Ty)));
+		}
+		else {
+			constexpr int64_t perBufSize = bufSize/sizeof(Ty);
+			for(; size>0; size-=perBufSize) {
+				if(ifs.fail())
+					return;
+				int64_t realSize = size<perBufSize? size:perBufSize;
+				auto nowSize = str.size();
+				str.resize((std::basic_string<Ty>::size_type)(nowSize+realSize));
+				ReadBuf(&str[0]+nowSize*sizeof(Ty), (size_t)(realSize*sizeof(Ty)));
+			}
 		}
 	}
 	//对vector内置类型进行文件读取
@@ -1147,19 +1277,24 @@ public:
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
+		if(ifs.fail())
+			return;
 		constexpr int64_t perBufSize = bufSize/sizeof(Ty);
-		//读数据
 		vec.clear();
-		for(; size>0; size-=perBufSize) {
-			int64_t realSize = size<perBufSize? size:perBufSize;
-			auto nowSize = vec.size();
-			vec.resize(nowSize+realSize);
-			ifs.read(reinterpret_cast<char *>(vec.data())+nowSize*sizeof(Ty),
-				realSize*sizeof(Ty));
-			if(ifs.bad())
-				throw std::runtime_error("Read File Bad Error");
-			if(ifs.fail())
-				return;
+		//读数据
+		if(bFast) {
+			vec.resize((std::vector<Ty>::size_type)(size));
+			ReadBuf(vec.data(), size*sizeof(Ty));
+		}
+		else {
+			for(; size>0; size-=perBufSize) {
+				if(ifs.fail())
+					return;
+				int64_t realSize = size<perBufSize? size:perBufSize;
+				auto nowSize = vec.size();
+				vec.resize((std::vector<Ty>::size_type)(nowSize+realSize));
+				ReadBuf(vec.data()+nowSize*sizeof(Ty), realSize*sizeof(Ty));
+			}
 		}
 	}
 	//对vector非内置类型进行文件读取，需默认构造函数
@@ -1170,13 +1305,25 @@ public:
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
+		if(ifs.fail())
+			return;
 		//读数据
 		vec.clear();
-		for(int i=0; i<size; ++i) {
-			vec.emplace_back();
-			*this >>vec.back();
-			if(ifs.fail())
-				return;
+		if(bFast) {
+			vec.resize((std::vector<Ty>::size_type)size);
+			for(auto &r : vec) {
+				if(ifs.fail())
+					return;
+				*this >>r;
+			}
+		}
+		else {
+			for(int64_t i=0; i<size; ++i) {
+				if(ifs.fail())
+					return;
+				vec.emplace_back();
+				*this >>vec.back();
+			}
 		}
 	}
 	//对array内置类型进行文件读取
@@ -1185,9 +1332,7 @@ public:
 	>::type TypeRead(std::array<Ty, c_size> &arr)
 	{
 		//读数据
-		ifs.read(reinterpret_cast<char *>(arr.data()), c_size*sizeof(Ty));
-		if(ifs.bad())
-			throw std::runtime_error("Read File Bad Error");
+		ReadBuf(arr.data(), c_size*sizeof(Ty));
 	}
 	//对array非内置类型进行文件读取
 	template<typename Ty, size_t c_size>
@@ -1195,10 +1340,10 @@ public:
 	>::type TypeRead(std::array<Ty, c_size> &arr)
 	{
 		//读数据
-		for(int i=0; i<c_size; ++i) {
-			*this >>arr[i];
+		for(int64_t i=0; i<c_size; ++i) {
 			if(ifs.fail())
 				return;
+			*this >>arr[i];
 		}
 	}
 	//对deque进行文件读取，需默认构造函数
@@ -1208,13 +1353,15 @@ public:
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
-		//读数据
+		if(ifs.fail())
+			return;
 		deq.clear();
-		for(int i=0; i<size; ++i) {
-			deq.emplace_back();
-			*this >>deq.back();
+		//读数据
+		for(int64_t i=0; i<size; ++i) {
 			if(ifs.fail())
 				return;
+			deq.emplace_back();
+			*this >>deq.back();
 		}
 	}
 	//对list进行文件读取，需默认构造函数
@@ -1224,99 +1371,262 @@ public:
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
+		if(ifs.fail())
+			return;
 		lis.clear();
 		//读数据
-		for(int i=0; i<size; ++i) {
-			lis.emplace_back();
-			*this >>lis.back();
+		for(int64_t i=0; i<size; ++i) {
 			if(ifs.fail())
 				return;
+			lis.emplace_back();
+			*this >>lis.back();
 		}
 	}
 	//对二叉树进行文件读取，需默认构造和移动赋值
-	template<typename Ty>
-	void TypeRead(std::set<Ty> &bst)
+	template<typename Ty, typename TyComp>
+	void TypeRead(std::set<Ty, TyComp> &bst)
 	{
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
+		if(ifs.fail())
+			return;
 		bst.clear();
 		//读数据
-		for(int i=0; i<size; ++i) {
-			Ty data;
-			*this >>data;
+		for(int64_t i=0; i<size; ++i) {
 			if(ifs.fail())
 				return;
-			if(!bst.insert(std::move(data)).second) {
-				ifs.setstate(std::ios::failbit);
+			Ty data;
+			*this >>data;
+			bst.insert(bst.end(), std::move(data));
+		}
+	}
+	//对多值二叉树进行文件读取，需默认构造和移动赋值
+	template<typename Ty, typename TyComp>
+	void TypeRead(std::multiset<Ty, TyComp> &bst)
+	{
+		//读尺寸
+		int64_t size = -1;
+		TypeRead(size);
+		if(ifs.fail())
+			return;
+		bst.clear();
+		//读数据
+		for(int64_t i=0; i<size; ++i) {
+			if(ifs.fail())
 				return;
-			}
+			Ty data;
+			*this >>data;
+			bst.insert(bst.end(), std::move(data));
 		}
 	}
 	//对二叉树对进行文件读取，需默认构造和移动赋值
-	template<typename Ty1, typename Ty2>
-	void TypeRead(std::map<Ty1, Ty2> &bst)
+	template<typename Ty1, typename Ty2, typename TyComp>
+	void TypeRead(std::map<Ty1, Ty2, TyComp> &bst)
 	{
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
+		if(ifs.fail())
+			return;
 		bst.clear();
 		//读数据
-		for(int i=0; i<size; ++i) {
+		for(int64_t i=0; i<size; ++i) {
+			if(ifs.fail())
+				return;
 			Ty1 data;
 			*this >>data;
 			if(ifs.fail())
 				return;
-			auto res = bst.emplace(std::piecewise_construct,
+			auto res = bst.emplace_hint(bst.end(), std::piecewise_construct,
 				std::forward_as_tuple(std::move(data)), std::make_tuple());
-			if(!res.second) {
-				ifs.setstate(std::ios::failbit);
-				return;
-			}
-			*this >>res.first->second;
+			*this >>res->second;
 		}
 	}
-	//对哈希表进行文件读取，需默认构造和移动赋值
-	template<typename Ty>
-	void TypeRead(std::unordered_set<Ty> &htb)
+	//对多值二叉树对进行文件读取，需默认构造和移动赋值
+	template<typename Ty1, typename Ty2, typename TyComp>
+	void TypeRead(std::multimap<Ty1, Ty2, TyComp> &bst)
 	{
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
-		htb.clear();
+		if(ifs.fail())
+			return;
+		bst.clear();
 		//读数据
-		for(int i=0; i<size; ++i) {
-			Ty data;
+		for(int64_t i=0; i<size; ++i) {
+			if(ifs.fail())
+				return;
+			Ty1 data;
 			*this >>data;
 			if(ifs.fail())
 				return;
-			if(!htb.insert(std::move(data)).second) {
-				ifs.setstate(std::ios::failbit);
-				return;
-			}
+			auto res = bst.emplace_hint(bst.end(), std::piecewise_construct,
+				std::forward_as_tuple(std::move(data)), std::make_tuple());
+			*this >>res->second;
 		}
 	}
-	//对哈希表对进行文件读取，需默认构造和移动赋值
-	template<typename Ty1, typename Ty2>
-	void TypeRead(std::unordered_map<Ty1, Ty2> &htb)
+	//对哈希表进行文件读取，需默认构造和移动赋值
+	template<typename Ty, typename TyHash, typename TyComp>
+	void TypeRead(std::unordered_set<Ty, TyHash, TyComp> &htb)
 	{
 		//读尺寸
 		int64_t size = -1;
 		TypeRead(size);
+		if(ifs.fail())
+			return;
 		htb.clear();
 		//读数据
-		for(int i=0; i<size; ++i) {
+		for(int64_t i=0; i<size; ++i) {
+			if(ifs.fail())
+				return;
+			Ty data;
+			*this >>data;
+			htb.insert(std::move(data));
+		}
+	}
+	//对多值哈希表进行文件读取，需默认构造和移动赋值
+	template<typename Ty, typename TyHash, typename TyComp>
+	void TypeRead(std::unordered_multiset<Ty, TyHash, TyComp> &htb)
+	{
+		//读尺寸
+		int64_t size = -1;
+		TypeRead(size);
+		if(ifs.fail())
+			return;
+		htb.clear();
+		//读数据
+		for(int64_t i=0; i<size; ++i) {
+			if(ifs.fail())
+				return;
+			Ty data;
+			*this >>data;
+			htb.insert(std::move(data));
+		}
+	}
+	//对哈希表对进行文件读取，需默认构造和移动赋值
+	template<typename Ty1, typename Ty2, typename TyHash, typename TyComp>
+	void TypeRead(std::unordered_map<Ty1, Ty2, TyHash, TyComp> &htb)
+	{
+		//读尺寸
+		int64_t size = -1;
+		TypeRead(size);
+		if(ifs.fail())
+			return;
+		htb.clear();
+		//读数据
+		for(int64_t i=0; i<size; ++i) {
+			if(ifs.fail())
+				return;
+			Ty1 data;
+			*this >>data;
+			if(ifs.fail())
+				return;
+			auto res = htb.emplace(std::piecewise_construct,
+				std::forward_as_tuple(std::move(data)), std::make_tuple()).first;
+			*this >>res->second;
+		}
+	}
+	//对多值哈希表对进行文件读取，需默认构造和移动赋值
+	template<typename Ty1, typename Ty2, typename TyHash, typename TyComp>
+	void TypeRead(std::unordered_multimap<Ty1, Ty2, TyHash, TyComp> &htb)
+	{
+		//读尺寸
+		int64_t size = -1;
+		TypeRead(size);
+		if(ifs.fail())
+			return;
+		htb.clear();
+		//读数据
+		for(int64_t i=0; i<size; ++i) {
+			if(ifs.fail())
+				return;
 			Ty1 data;
 			*this >>data;
 			if(ifs.fail())
 				return;
 			auto res = htb.emplace(std::piecewise_construct,
 				std::forward_as_tuple(std::move(data)), std::make_tuple());
-			if(!res.second) {
-				ifs.setstate(std::ios::failbit);
-				return;
-			}
-			*this >>res.first->second;
+			*this >>res->second;
 		}
+	}
+};
+
+//读类型二进制文件类迭代器
+//是输入迭代器，存储类型必须可默认构造
+template<typename Ty>
+class BinReadFileIter:
+	public std::iterator<std::input_iterator_tag, Ty,
+	int64_t, Ty *, Ty &>
+{
+private://数据
+	BinReadFile *pBrf;//关联文件
+	int64_t size;//剩余写入大小，负数表示无限写入
+	Ty data;//存储数据
+
+public://基本函数
+	//默认构造，成为尾后迭代器
+	BinReadFileIter():
+		pBrf(nullptr), size(0)
+	{
+	}
+	//关联构造，初始进行读取，可选择的加入读取数量限制
+	BinReadFileIter(BinReadFile &brf, int64_t o_size= -1):
+		pBrf(&brf), size(o_size)
+	{
+		Read();
+	}
+public://运算符重载
+	//解引用操作，返回数据引用，支持移动操作
+	Ty &operator *() const
+	{
+		return data;
+	}
+	Ty *operator ->() const
+	{
+		return &operator *();
+	}
+	//递增操作，同时进行读取
+	BinReadFileIter &operator ++()
+	{
+		Read();
+		return *this;
+	}
+	BinReadFileIter operator ++(int)
+	{
+		TemplateIter ret(*this);
+		operator ++();
+		return ret;
+	}
+	//比较操作，指向相同的文件就认为相同
+	bool operator ==(const BinReadFileIter &other) const
+	{
+		return pBrf==other.pBrf;
+	}
+	bool operator !=(const BinReadFileIter &other) const
+	{
+		return !operator ==(other);
+	}
+private:
+	//读取数据，每次读取是析构再默认构造一次数据，以支持移动操作
+	void Read()
+	{
+		assert(pBrf!=nullptr);
+		//若剩余0则转为尾后
+		if(size==0) {
+			pBrf = nullptr;
+			return;
+		}
+		//清除
+		_IoOperatorCallDestruct(data);
+		new(&data) Ty();
+		//读取
+		*pBrf >>data;
+		//若读取失败则转为尾后
+		if(!*pBrf)
+			pBrf = nullptr;
+		//减少剩余
+		if(size>0)
+			-- size;
 	}
 };

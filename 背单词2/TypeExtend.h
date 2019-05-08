@@ -104,10 +104,35 @@ struct RemoveCVRef
 	using type = typename std::remove_cv<typename std::remove_reference<Ty>::type>::type;
 };
 
-//前者去除引用常数易变后是否为后者
-template<typename TySrc, typename TyDst>
+//后者去除引用常数易变后是否为前者
+template<typename TyDst, typename TySrc>
 struct IsRemoveCVRefSame:
-	std::is_same<typename RemoveCVRef<TySrc>::type, TyDst>
+	std::is_same<TyDst, typename RemoveCVRef<TySrc>::type>
+{
+};
+
+
+//后者参数包是否要不没有参数，要不只有一个并且为前者
+template<typename TyDst, typename ...TySrc_S>
+struct IsNoneOrSame:
+	std::integral_constant<bool, sizeof...(TySrc_S)==0>
+{
+};
+template<typename TyDst, typename TySrc>
+struct IsNoneOrSame<TyDst, TySrc>:
+	std::is_same<TyDst, TySrc>
+{
+};
+
+//后者参数包是否要不没有参数，要不只有一个并且去除引用常数易变后为前者
+template<typename TyDst, typename ...TySrc_S>
+struct IsNoneOrRemoveCVRefSame:
+	std::integral_constant<bool, sizeof...(TySrc_S)==0>
+{
+};
+template<typename TyDst, typename TySrc>
+struct IsNoneOrRemoveCVRefSame<TyDst, TySrc>:
+	IsRemoveCVRefSame<TyDst, TySrc>
 {
 };
 
@@ -124,6 +149,29 @@ struct IsIteratorType<Ty, typename ParamValidTester<
 >: std::true_type
 {
 };
+
+
+//测试去除常易变易用属性后，是否为字符指针，字符数组或string类型
+template<class Ty>
+struct IsRemoveCVRefSameSzOrString:
+	std::integral_constant<bool, IsRemoveCVRefSame<char *, Ty>::value
+	|| IsRemoveCVRefSame<const char *, Ty>::value
+	|| (std::is_array<typename RemoveCVRef<Ty>::type>::value
+	&& IsRemoveCVRefSame<char, typename std::remove_extent<
+	typename RemoveCVRef<Ty>::type>::type>::value)
+	|| IsRemoveCVRefSame<std::string, Ty>::value>
+{
+};
+
+
+
+//生成迭代器解引用的类型
+template<typename TyIt>
+struct IteratorDerefType
+{
+	using type = decltype(*std::declval<TyIt>());
+};
+
 
 
 
@@ -269,6 +317,38 @@ struct TemplateInt<false, 8>
 };
 
 
+//与size_t大小相同的距离类型，有符号类型
+using DifferenceType = typename TemplateInt<true, sizeof(size_t)>::type;
+
+
+
+//广义的比较函数类
+template<typename Ty1, typename Ty2>
+struct GeneralLess
+{
+	typedef bool result_type;
+	typedef Ty1 first_argument_type;
+	typedef Ty2 second_argument_type;
+	result_type operator()(const first_argument_type &arg1,
+		const second_argument_type &arg2) const
+	{
+		return arg1<arg2;
+	}
+};
+template<typename Ty1, typename Ty2>
+struct GeneralEqualTo
+{
+	typedef bool result_type;
+	typedef Ty1 first_argument_type;
+	typedef Ty2 second_argument_type;
+	result_type operator()(const first_argument_type &arg1,
+		const second_argument_type &arg2) const
+	{
+		return arg1==arg2;
+	}
+};
+
+
 
 //存储某类型，值类型
 template<typename Ty>
@@ -343,31 +423,46 @@ struct ValueHold<void>
 
 //调用变量的析构函数
 template<typename Ty>
-void CallDistruct(Ty &value)
+inline void CallDestruct(Ty &value)
 {
 	value.~Ty();
+}
+
+//调用变量的构造函数，要求变量已经析构
+template<typename Ty, typename ...Ty_S>
+inline void CallConstruct(Ty &value, Ty_S &&...arg_s)
+{
+	new(&value) Ty(std::forward<Ty_S>(arg_s)...);
+}
+
+//调用变量的析构函数和构造函数
+template<typename Ty, typename ...Ty_S>
+inline void CallRestruct(Ty &value, Ty_S &&...arg_s)
+{
+	CallDestruct(value);
+	CallConstruct(value, std::forward<Ty_S>(arg_s)...);
 }
 
 
 
 //提取变量的常引用
 template<typename Ty>
-const Ty &ConstRef(const Ty &value)
+inline const Ty &GetConstRef(const Ty &value)
 {
 	return value;
 }
 
 
-//对变量进行拷贝
+//对变量进行值拷贝
 template<typename Ty>
-Ty CreateCopy(const Ty &value)
+inline Ty GetValueCopy(const Ty &value)
 {
 	return Ty(value);
 }
 
 
 
-//c风格字符串转化字符串，重载其他类型
+//c风格字符串转化字符串，字符指针重载
 inline std::string OverrideSzToStr(const char *sz)
 {
 	return std::string(sz);
@@ -376,6 +471,16 @@ inline std::string OverrideSzToStr(char *sz)
 {
 	return std::string(sz);
 }
+//c风格字符串转化字符串，字符数组重载
+template<typename Ty, size_t c_size>
+inline typename std::enable_if<std::is_array<typename RemoveCVRef<Ty>::type>::value
+	&& IsRemoveCVRefSame<char, typename std::remove_extent<
+	typename RemoveCVRef<Ty>::type>::type>::value, std::string
+>::type OverrideSzToStr(Ty &&sz)
+{
+	return std::string(std::forward<Ty>(sz));
+}
+//c风格字符串转化字符串，其余情况重载
 template<typename Ty>
 inline Ty &&OverrideSzToStr(Ty &&arg)
 {
@@ -575,6 +680,35 @@ inline std::string &operator <<(std::basic_string<Ele> &str, Ty &&arg)
 
 
 
+//范围内字典序比较操作，使用迭代器，小于等于大于分别返回-1,0,1
+template<typename TyIt1, typename TyIt2,
+	typename TyLess= GeneralLess<typename IteratorDerefType<TyIt1>::type,
+	typename IteratorDerefType<TyIt2>::type>,
+	typename TyEqual= GeneralEqualTo<typename IteratorDerefType<TyIt1>::type,
+	typename IteratorDerefType<TyIt2>::type>>
+inline int SequenceCompare(TyIt1 st1, TyIt1 ed1, TyIt2 st2, TyIt2 ed2,
+	TyLess funcLess= TyLess(), TyEqual funcEqual= TyEqual())
+{
+	for(; ; ++st1, ++st2) {
+		//判断结束条件
+		if(st1==ed1) {
+			if(st2==ed2)
+				return 0;
+			else
+				return -1;
+		}
+		else if(st2==ed2)
+			return 1;
+		//判断大小
+		if(funcLess(*st1, *st2))
+			return -1;
+		else if(!(funcEqual(*st1, *st2)))
+			return 1;
+	}
+}
+
+
+
 //检查是否为tuple类
 template<typename Ty>
 struct IsTupleType:
@@ -670,12 +804,12 @@ struct IteratorHash
 
 //各类迭代器比较函数，尾后迭代器解引用不安全
 template<typename Ty>
-inline bool IteratorLT(Ty it1, Ty it2)
+inline bool IteratorLT(const Ty &it1, const Ty &it2)
 {
 	return &*it1<&*it2;
 }
 template<typename Ty>
-inline bool IteratorEQ(Ty it1, Ty it2)
+inline bool IteratorEQ(const Ty &it1, const Ty &it2)
 {
 	return &*it1==&*it2;
 }
@@ -688,7 +822,8 @@ struct IteratorLess
 	typedef bool result_type;
 	typedef Ty first_argument_type;
 	typedef Ty second_argument_type;
-	result_type operator()(first_argument_type it1, second_argument_type it2) const
+	result_type operator()(const first_argument_type &it1,
+		const second_argument_type &it2) const
 	{
 		return IteratorLT(it1, it2);
 	}
@@ -699,7 +834,8 @@ struct IteratorEuqalTo
 	typedef bool result_type;
 	typedef Ty first_argument_type;
 	typedef Ty second_argument_type;
-	result_type operator()(first_argument_type it1, second_argument_type it2) const
+	result_type operator()(const first_argument_type &it1,
+		const second_argument_type &it2) const
 	{
 		return IteratorEQ(it1, it2);
 	}

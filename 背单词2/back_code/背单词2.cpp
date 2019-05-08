@@ -6,7 +6,7 @@
 
 
 //主数据存储
-LibraryType g_mapWord;
+ListType g_mapWord;
 
 
 
@@ -37,7 +37,7 @@ void ReadDataFile()
 			if(file.path().extension().string()==DATA_FILE_EXT) {
 				BinReadFile brf(file.path().string());
 				string name = FormToStr(file.path().stem().string());
-				if(g_mapWord.count(name)!=0)
+				if(g_mapWord.find(name)!=g_mapWord.end())
 					throw runtime_error("文件与列表重复");
 				brf >>g_mapWord[name];
 			}
@@ -57,7 +57,7 @@ void WriteDataFile(const ListNameSet &setSave)
 		filesystem::path path(DATA_DIR_PATH);
 		path /= name+DATA_FILE_EXT;
 		//不存在则删除文件
-		if(g_mapWord.count(oriName)==0) {
+		if(g_mapWord.find(oriName)==g_mapWord.end()) {
 			if(filesystem::exists(path))
 				filesystem::remove(path);
 		}
@@ -80,7 +80,7 @@ void ChoiceList(const string &curName, ListNameSet &setSave)
 			cout <<"\n";
 		else
 			bFirst = false;
-		cout <<list.first <<LONG_TAB_BLANK <<list.second.Size();
+		cout <<list.first <<LONG_TAB_BLANK <<list.second.size();
 	}
 	cin >>endl;
 }
@@ -95,7 +95,7 @@ void ChoiceChange(string &curName, ListNameSet &setSave)
 		return;
 	std::replace_if(name.begin(), name.end(), IsNotBroadIdChar, '_');
 	//若不存在则判断创建
-	if(g_mapWord.count(name)==0) {
+	if(g_mapWord.find(name)==g_mapWord.end()) {
 		cout <<"\"" <<name <<"\"不存在，输入非空白创建: ";
 		if(CinGetLineJudgeBlank()) {
 			g_mapWord[name];
@@ -113,19 +113,37 @@ void ChoiceChange(string &curName, ListNameSet &setSave)
 void ChoiceShow(const string &curName, ListNameSet &setSave)
 {
 	auto &curList = g_mapWord.at(curName);
-	if(curList.Empty())
+	if(curList.empty())
 		cout <<"（空）";
 	else {
 		cout <<"输入从哪到哪，不合法则显示全部: ";
 		int st, ed;
 		if(!(cin >>st >>ed >>endl)) {
 			st = 1;
-			ed = curList.Size();
+			ed = curList.size();
 		}
 		-- st;
-		RANGE_LIMIT(st, 0, (int)curList.Size()-1);
-		RANGE_LIMIT(ed, st+1, (int)curList.Size());
-		cout <<PrintRangeIndexWord(curList, st, ed);
+		RANGE_LIMIT(st, 0, (int)curList.size()-1);
+		RANGE_LIMIT(ed, st+1, (int)curList.size());
+		bool bFirst = true;
+		if(st!=0) {
+			cout <<PrintIndexWord(curList, 0) <<"\n"
+				<<"...";
+			bFirst = false;
+		}
+		for(int i=st; i<ed; ++i) {
+			if(!bFirst)
+				cout <<"\n";
+			bFirst = false;
+			cout <<PrintIndexWord(curList, i);
+		}
+		if(ed!=curList.size()) {
+			if(!bFirst)
+				cout <<"\n";
+			bFirst = false;
+			cout <<"...\n"
+				<<PrintIndexWord(curList, curList.size()-1);
+		}
 	}
 	cin >>endl;
 }
@@ -142,7 +160,7 @@ void ChoiceAdd(const string &curName, ListNameSet &setSave)
 		cout <<"输入英文，空则返回: ";
 		if(!CinGetLineJudgeBlank(&tmp.english))
 			break;
-		if(curList.Count(tmp)!=0) {
+		if(!CanListAddWord(curList, tmp)) {
 			cout <<"单词重复\n";
 			continue;
 		}
@@ -150,7 +168,7 @@ void ChoiceAdd(const string &curName, ListNameSet &setSave)
 		if(!CinGetLineJudgeBlank(&tmp.chinese))
 			break;
 		bChange = true;
-		curList.PushBack(tmp);
+		curList.push_back(tmp);
 		cout <<"添加成功\n";
 	}
 	if(bChange)
@@ -165,7 +183,7 @@ void ChoiceDelete(string &curName, ListNameSet &setSave)
 	bool bChange = false;
 	string retName = curName;
 	while(true) {
-		if(curList.Empty()) {
+		if(curList.empty()) {
 			cout <<"单词表为空";
 			if(curName==NOW_LIST_NAME || curName==TEMP_LIST_NAME) {
 				cin >>endl;
@@ -181,26 +199,35 @@ void ChoiceDelete(string &curName, ListNameSet &setSave)
 			}
 			break;
 		}
-		cout <<"当前有" <<curList.Size() <<"单词，输入预览起点，不合法则返回: ";
+		cout <<"当前有" <<curList.size() <<"单词，输入预览起点，不合法则返回: ";
 		int num;
 		if(!(cin >>num >>endl))
 			break;
 		-- num;
-		RANGE_LIMIT(num, 0, (int)curList.Size()-1);
-		int limit = MIN_OF(num+SHOW_DEFAULT_NUM, (int)curList.Size());
-		cout <<PrintRangeIndexWord(curList, num, limit) <<"\n";
+		RANGE_LIMIT(num, 0, (int)curList.size()-1);
+		if(num!=0) {
+			cout <<PrintIndexWord(curList, 0) <<"\n"
+				<<"...\n";
+		}
+		for(int i=0; i<SHOW_DEFAULT_NUM && num!=curList.size(); ++i, ++num) {
+			cout <<PrintIndexWord(curList, num) <<"\n";
+		}
+		if(num!=curList.size()) {
+			cout <<"...\n"
+				<<PrintIndexWord(curList, curList.size()-1) <<"\n";
+		}
 		cout <<"输入删除范围编号，不合法则返回: ";
 		int st, ed;
 		if(!(cin >>st >>ed >>endl))
 			break;
 		-- st;
-		if(!IS_IN_RANGE(st, 0, (int)curList.Size()-1)
-			|| !IS_IN_RANGE(ed, st+1, (int)curList.Size()))
+		if(!IS_IN_RANGE(st, 0, (int)curList.size()-1)
+			|| !IS_IN_RANGE(ed, st+1, (int)curList.size()))
 		{
 			cout <<"序号错误\n";
 			continue;
 		}
-		curList.IndexErase(st, ed);
+		curList.erase(curList.begin()+st, curList.begin()+ed);
 		bChange = true;
 		cout <<"删除" <<ed-st <<"成功\n";
 	}
@@ -221,9 +248,9 @@ void ChoiceUpdata(const string &curName, ListNameSet &setSave)
 		vector<ItemIndex> vecIndex;//查找结果类
 		//查找单词
 		for(auto itList=g_mapWord.begin(); itList!=g_mapWord.end(); ++itList) {
-			auto it = itList->second.Find(target);
-			if(it!=itList->second.ValueEnd()) {
-				vecIndex.emplace_back(itList, it.GetIter());
+			auto it = std::find(itList->second.begin(), itList->second.end(), target);
+			if(it!=itList->second.end()) {
+				vecIndex.emplace_back(itList, it-itList->second.begin());
 			}
 		}
 		if(vecIndex.size()==0) {
@@ -233,7 +260,7 @@ void ChoiceUpdata(const string &curName, ListNameSet &setSave)
 		}
 		cout <<"结果为：\n";
 		for(auto &idx: vecIndex) {
-			cout <<PrintListFindIndexWord(idx) <<"\n";
+			cout <<PrintListIndexWord(idx) <<"\n";
 		}
 		//请求输入
 		cout <<"输入英文，为空则不变: ";
@@ -247,10 +274,15 @@ void ChoiceUpdata(const string &curName, ListNameSet &setSave)
 		//改变单词
 		int num = 0;
 		for(auto &idx: vecIndex) {
-			if(!idx.TryModify(target)) {
+			auto itSt = idx.itList->second.begin(),
+				itMd = idx.itList->second.begin()+idx.idx,
+				itEd = idx.itList->second.end();
+			if(std::find(itSt, itMd, target)!=itMd || std::find(itMd+1, itEd, target)!=itEd)
+			{
 				cout <<idx.itList->first <<"表单词重复\n";
 				continue;
 			}
+			*idx = target;
 			++ num;
 			setSave.insert(idx.itList->first);
 		}
@@ -278,15 +310,11 @@ void ChoiceRecite(const string &curName, ListNameSet &setSave)
 	cout <<"输入浮点数表示softmax函数底数，不合法则使用缺省值1.5: ";
 	if(!(cin >>base >>endl))
 		base = 1.5;
-	FastEraseWrap<vector<int>> vecFlag(curList.Size(), initFlag);//单词标记数组
-	FastEraseWrap<vector<double>> vecPrb(curList.Size());//概率数组
-	for(int i=0; i!=curList.Size(); ++i)
+	vector<int> vecFlag(curList.size(), initFlag);//单词标记数组
+	vector<double> vecPrb(curList.size());//概率数组
+	for(int i=0; i!=curList.size(); ++i)
 		vecPrb[i] = FastPower(base, vecFlag[i]);
-	FastEraseWrap<vector<ListType::Iter>> vecIt(curList.Size());//索引到单词数组
-	auto itTmp = curList.Begin();
-	for(int i=0; i!=curList.Size(); ++i, ++itTmp)
-		vecIt[i] = itTmp;
-	int sumFlag = curList.Size()*initFlag;//标记总数
+	int sumFlag = curList.size()*initFlag;
 	cout <<CLEAR_ENTER;
 	cout <<"输入d减少标记，标记为0则删除单词，输入s保持标记，输入+导入到temp\n"
 		<<"s和d不能同时出现，不输入则恢复一半标记数，其余返回";
@@ -294,17 +322,16 @@ void ChoiceRecite(const string &curName, ListNameSet &setSave)
 	cout <<"\n";
 	mt19937 ran((unsigned)system_clock::now().time_since_epoch().count());
 	while(true) {
-		if(curList.Empty()) {
+		if(curList.empty()) {
 			cout <<"单词表为空";
 			cin >>endl;
 			break;
 		}
 		std::discrete_distribution<> dtbt(vecPrb.begin(), vecPrb.end());
 		int index = dtbt(ran);
-		cout <<TAB_BLANK <<vecIt[index]->english <<TAB_BLANK;
+		cout <<TAB_BLANK <<curList[index].english <<TAB_BLANK;
 		cin >>endl;
-		cout <<curList.GetIndex(vecIt[index])+1 <<"/" <<curList.Size() <<OUT_BLANK
-			<<vecIt[index]->chinese <<"\n"
+		cout <<index+1 <<"/" <<curList.size() <<OUT_BLANK <<curList[index].chinese <<"\n"
 			<<"剩余" <<vecFlag[index] <<"/" <<sumFlag <<"，输入: ";
 		string option;
 		CinGetLineFirstString(option);
@@ -317,31 +344,28 @@ void ChoiceRecite(const string &curName, ListNameSet &setSave)
 				cout <<"删除词库与temp为同一个，导入temp没有意义\n";
 			else {
 				if(!bHasTemp) {
-					wordsTemp.Clear();
+					wordsTemp.clear();
 					bHasTemp = true;
 				}
-				if(ListAddWord(wordsTemp, *vecIt[index]))
+				if(ListAddWord(wordsTemp, curList[index]))
 					cout <<"导入temp成功\n";
 				else
 					cout <<"导入temp重复\n";
 			}
 		}
 		if(bDel) {
-			//减少标记
 			-- vecFlag[index];
+			vecPrb[index] = FastPower(base, vecFlag[index]);
 			-- sumFlag;
 			if(vecFlag[index]==0) {
-				curList.Erase(vecIt[index]);
-				vecFlag.IndexFastErase(index);
-				vecPrb.IndexFastErase(index);
-				vecIt.IndexFastErase(index);
+				curList.erase(curList.begin()+index);
+				vecFlag.erase(vecFlag.begin()+index);
+				vecPrb.erase(vecPrb.begin()+index);
 				bChange = true;
 				cout <<"单词已删除\n";
 			}
-			else {
-				vecPrb[index] = FastPower(base, vecFlag[index]);
+			else
 				cout <<"减少标记\n";
-			}
 		}
 		else if(bSta) {
 			cout <<"保持标记\n";
@@ -367,102 +391,89 @@ void ChoiceRecite(const string &curName, ListNameSet &setSave)
 //当前词汇表检查单词
 void ChoiceCheck(const string &curName, ListNameSet &setSave)
 {
-	auto &curList = g_mapWord.at(curName);
 	cout <<"输入导入的单词表，为空则默认now：";
 	string inListName;
 	if(!CinGetLineFirstString(inListName))
 		inListName = NOW_LIST_NAME;
-	auto itTmp = g_mapWord.find(inListName);
-	if(itTmp==g_mapWord.end()) {
+	if(g_mapWord.find(inListName)==g_mapWord.end()) {
 		cout <<inListName <<"不存在\n";
 		return;
 	}
-	auto &inList = itTmp->second;//导入到的词库
 	bool bHasTemp = false;//是否已经导入过temp
 	auto &wordsTemp = g_mapWord.at(TEMP_LIST_NAME);//temp词汇表
-	bool bSameList = curName==inListName;//是否导入到当前词表
-	vector<Word> vecWords;//拷贝出词表
-	vector<bool> vecFlag;//标记是否最终要进行导入
-	//将当前词汇表复制出来，（中途取消后）默认不导入
-	if(!bSameList) {
-		vecFlag.assign(curList.Size(), false);
-		vecWords.assign(curList.begin(), curList.end());
-	}
-	//若导入同一个表则剪切出来，（中途取消后）默认导入
-	else {
-		vecFlag.assign(curList.Size(), true);
-		vecWords.assign(make_move_iterator(curList.begin()),
-			make_move_iterator(curList.end()));
-		curList.Clear();
-	}
-	vector<int> vecIndex(vecWords.size());//随机序号数组
-	for(int i=0; i!=vecIndex.size(); ++i)
-		vecIndex[i] = i;
-	mt19937 ran((unsigned)system_clock::now().time_since_epoch().count());
-	//随机号数组进行重排
-	std::random_shuffle(vecIndex.begin(), vecIndex.end(),
-		[&ran](unsigned n) {return ran()%n; });
 	cout <<CLEAR_ENTER;
 	cout <<"回车下一步，输入l(字母)导入" <<inListName <<"，输入+导入到temp，其余返回";
 	cin >>endl;
 	cout <<"\n";
+	vector<Word> tmpWords;
+	bool bSameList = curName==inListName;
+	auto &outWords = *(bSameList? &tmpWords:&g_mapWord.at(curName));//源词库
+	auto &inWords = g_mapWord.at(inListName);//导入词库
+	if(bSameList)
+		swap(tmpWords, g_mapWord.at(curName));
+	vector<int> vecIndex(outWords.size());//随机序号数组
+	for(int i=0; i!=vecIndex.size(); ++i)
+		vecIndex[i] = i;
+	mt19937 ran((unsigned)system_clock::now().time_since_epoch().count());
+	std::random_shuffle(vecIndex.begin(), vecIndex.end(),
+		[&ran](unsigned n) {return ran()%n; });
+	bool bUser = true;//用户输入状态
 	//check循环
-	for(int i=0; i!=vecIndex.size(); ++i) {
+	for(int i=0; i!=outWords.size(); ++i) {
 		int index = vecIndex[i];
 		string option;
 		bool bLead = false;
 		bool bTemp = false;
-		//用户输入
-		cout <<i+1 <<"/" <<vecIndex.size() <<OUT_BLANK
-			<<vecWords[index].english <<TAB_BLANK;
-		cin >>endl;
-		cout <<index+1 <<OUT_BLANK <<vecWords[index].chinese <<"\n"
-			<<"输入: ";
-		CinGetLineFirstString(option);
-		bLead = option=="l" || option=="l+" || option=="+l";
-		bTemp = option=="+" || option=="l+" || option=="+l";
+		//用户输入时
+		if(bUser) {
+			cout <<i+1 <<"/" <<outWords.size() <<OUT_BLANK <<outWords[index].english <<TAB_BLANK;
+			cin >>endl;
+			cout <<index+1 <<OUT_BLANK <<outWords[index].chinese <<"\n"
+				<<"输入: ";
+			CinGetLineFirstString(option);
+			bLead = option=="l" || option=="l+" || option=="+l";
+			bTemp = option=="+" || option=="l+" || option=="+l";
+		}
 		//若导入temp选项
 		if(bTemp) {
 			if(inListName==TEMP_LIST_NAME || curName==TEMP_LIST_NAME)
 				cout <<"导入导出词库与temp为同一个，导入temp没有意义\n";
 			else {
 				if(!bHasTemp) {
-					wordsTemp.Clear();
+					wordsTemp.clear();
 					bHasTemp = true;
 				}
-				if(ListAddWord(wordsTemp, vecWords[index]))
+				if(ListAddWord(wordsTemp, outWords[index]))
 					cout <<"导入temp成功\n";
 				else
 					cout <<"导入temp重复\n";
 			}
 		}
-		//若退出
-		if(!option.empty() && !bLead && !bTemp)
-			break;
-		//若导入选项
-		if(bLead) {
-			if(inList.Count(vecWords[index])==0) {
-				vecFlag[index] = true;
-				cout <<"导入成功\n";
+		//若导入选项或非用户输入
+		if(!bUser || bLead) {
+			if(bSameList) {
+				inWords.push_back(std::move(outWords[index]));
+				if(bUser)
+					cout <<"导入成功\n";
 			}
 			else {
-				vecFlag[index] = false;
-				cout <<"单词重复\n";
+				if(ListAddWord(inWords, outWords[index]))
+					cout <<"导入成功\n";
+				else
+					cout <<"单词重复\n";
 			}
 		}
-		else
-			vecFlag[index] = false;
-	}
-	//导入
-	bool bHasLead = false;
-	for(int i=0; i!=vecWords.size(); ++i) {
-		if(vecFlag[i]) {
-			bHasLead = true;
-			inList.PushBack(std::move(vecWords[i]));
+		//若退出，在同list情况进入非用户输入状态
+		if(bUser && !option.empty() && !bLead && !bTemp) {
+			if(bSameList) {
+				-- i;
+				bUser = false;
+			}
+			else
+				break;
 		}
 	}
-	if(bHasLead)
-		setSave.insert(inListName);
+	setSave.insert(inListName);
 	if(bHasTemp)
 		setSave.insert(TEMP_LIST_NAME);
 }
@@ -477,8 +488,8 @@ void ChoiceCopy(const string &curName, ListNameSet &setSave)
 	if(newListName!="i" && newListName!="o")
 		return;
 	bool bLeadOut = newListName=="o";//是否是导出
-	vector<LibraryType::iterator> vecListFrom;//导入源词汇表列表
-	ListType *listTo = nullptr;//导入目的词汇表
+	vector<ListType::iterator> vecListFrom;//导入源词汇表列表
+	vector<Word> *listTo = nullptr;//导入目的词汇表
 	int leadFromSt= 0, leadFromEd= 0;//导入源词汇范围
 	bool bLeadFrom = false;//是否按照范围导入
 	if(bLeadOut)
@@ -515,7 +526,7 @@ void ChoiceCopy(const string &curName, ListNameSet &setSave)
 			cout <<"输入导入到的词库，空输入返回: ";
 		else
 			cout <<"输入导入来源词库，空输入返回: ";
-		LibraryType::iterator itRes;
+		ListType::iterator itRes;
 		while(true) {
 			if(!CinGetLineFirstString(newListName))
 				return;
@@ -530,7 +541,7 @@ void ChoiceCopy(const string &curName, ListNameSet &setSave)
 		else
 			vecListFrom.push_back(itRes);
 		//选择导入范围
-		int size = (int)vecListFrom.front()->second.Size();
+		int size = (int)vecListFrom.front()->second.size();
 		cout <<"导入来源词库共有" <<size <<"词\n"
 			<<"输入导入的起始和终止序号，不合法则选择全部: ";
 		while(true) {
@@ -555,11 +566,10 @@ void ChoiceCopy(const string &curName, ListNameSet &setSave)
 		leadFromSt = 0;
 	for(auto &listFrom: vecListFrom) {
 		if(!bLeadFrom) {
-			leadFromEd = listFrom->second.Size();
+			leadFromEd = listFrom->second.size();
 		}
-		auto itWord = listFrom->second.GetIter(leadFromSt);
-		for(int i=leadFromSt; i!=leadFromEd; ++i, ++itWord) {
-			if(ListAddWord(*listTo, *itWord))
+		for(int i=leadFromSt; i!=leadFromEd; ++i) {
+			if(ListAddWord(*listTo, listFrom->second[i]))
 				++ success;
 			else
 				++ fail;
@@ -575,7 +585,7 @@ void ChoiceCopy(const string &curName, ListNameSet &setSave)
 void ChoiceSearch(const string &curName, ListNameSet &setSave)
 {
 	regex rgxList;
-	vector<LibraryType::iterator> vecListSearch;//正则匹配表
+	vector<ListType::iterator> vecListSearch;//正则匹配表
 	cout <<"输入筛选词汇表正则，全词匹配，空则返回: \n";
 	if(!CinGetRegex(rgxList))
 		return;
@@ -598,18 +608,19 @@ void ChoiceSearch(const string &curName, ListNameSet &setSave)
 	};
 	map<Word, Res> tmpList;//bool表示是否中文歧义
 	for(auto &refIt: vecListSearch) {
-		for(auto itWord=refIt->second.Begin(); itWord!=refIt->second.End(); ++itWord) {
-			if(std::regex_match(itWord->english, rgxWord)) {
+		for(int i=0; i!=refIt->second.size(); ++i) {
+			auto &word = refIt->second[i];
+			if(std::regex_match(word.english, rgxWord)) {
 				//单词符合正则，判断是否已有
-				auto it = tmpList.find(*itWord);
+				auto it = tmpList.find(word);
 				if(it==tmpList.end()) {
-					auto &refRes = tmpList.emplace(*itWord, Res()).first->second;
+					auto &refRes = tmpList.emplace(word, Res()).first->second;
 					refRes.bWrong = false;
-					refRes.index.emplace_back(refIt, itWord);
+					refRes.index.emplace_back(refIt, i);
 				}
 				else {
-					it->second.index.emplace_back(refIt, itWord);
-					if(itWord->chinese!=it->first.chinese)
+					it->second.index.emplace_back(refIt, i);
+					if(word.chinese!=it->first.chinese)
 						it->second.bWrong = true;
 				}
 			}
@@ -620,24 +631,21 @@ void ChoiceSearch(const string &curName, ListNameSet &setSave)
 		cin >>endl;
 		return;
 	}
-	//打印结果
+	setSave.insert(TEMP_LIST_NAME);
+	auto &oriTmpList = g_mapWord.at(TEMP_LIST_NAME);
+	oriTmpList.clear();
 	int wrongCnt = 0;
 	cout <<"结果为：\n";
 	for(auto &pr : tmpList) {
 		cout <<TAB_BLANK <<PrintWord(pr.first) <<"\n"
-			<<PrintItemFindIndexVector(pr.second.index);
+			<<PrintItemIndexVector(pr.second.index);
 		if(pr.second.bWrong) {
 			cout <<" ***中文不一致！***";
 			++ wrongCnt;
 		}
 		cout <<"\n";
+		oriTmpList.push_back(pr.first);
 	}
-	//存入temp
-	setSave.insert(TEMP_LIST_NAME);
-	auto &oriTmpList = g_mapWord.at(TEMP_LIST_NAME);
-	oriTmpList.Clear();
-	for(auto &pr : tmpList)
-		oriTmpList.PushBack(pr.first);
 	cout <<"共搜索" <<tmpList.size() <<"个，已存入\"" TEMP_LIST_NAME "\"中，其中"
 		<<wrongCnt <<"个中文不一致";
 	cin >>endl;
@@ -656,8 +664,9 @@ void ChoiceRegularize(const string &curName, ListNameSet &setSave)
 		CheckResult ret;
 		for(auto itList=g_mapWord.begin(); itList!=g_mapWord.end(); ++itList) {
 			auto &list = itList->second;
-			for(auto it=list.Begin(); it!=list.End(); ++it) {
-				ret[it->english][it->chinese].emplace_back(itList, it);
+			for(int i=0; i!=list.size(); ++i) {
+				auto &word = list[i];
+				ret[word.english][word.chinese].emplace_back(itList, i);
 			}
 		}
 		return ret;
@@ -691,27 +700,22 @@ void ChoiceRegularize(const string &curName, ListNameSet &setSave)
 		for(auto &res: vecEnglishBlank) {
 			cout <<TAB_BLANK "\"" <<res.first->first <<"\"\n";
 			for(auto &prChinese: res.first->second) {
-				cout <<PrintItemFindIndexVector(prChinese.second) <<",";
+				cout <<PrintItemIndexVector(prChinese.second) <<",";
 			}
 			cout <<"\n";
 		}
 		cout <<"共" <<vecEnglishBlank.size() <<"个，是否剔除空白符，输入非空则是: ";
 		if(CinGetLineJudgeBlank()) {
-			int cntFail = 0;
 			//更改空白符
 			for(auto &res: vecEnglishBlank) {
 				for(auto &prChinese: res.first->second) {
 					for(auto &idx: prChinese.second) {
-						auto word = *idx;
-						word.english = res.second;
-						if(!idx.TryModify(word))
-							++ cntFail;
-						else
-							setSave.insert(idx.itList->first);
+						idx->english = res.second;
+						setSave.insert(idx.itList->first);
 					}
 				}
 			}
-			cout <<"以已剔除空白符，失败" <<cntFail <<"个";
+			cout <<"以已剔除空白符";
 			cin >>endl;
 			//并更新检查结果
 			htbBstVec = lbdCheck();
@@ -742,20 +746,18 @@ void ChoiceRegularize(const string &curName, ListNameSet &setSave)
 		for(auto &res: vecChineseBlank) {
 			cout <<TAB_BLANK "\"" <<res.itEnglish->first <<"\""
 				<<LONG_TAB_BLANK "\"" <<res.itChinese->first <<"\"\n";
-			cout <<PrintItemFindIndexVector(res.itChinese->second) <<"\n";
+			cout <<PrintItemIndexVector(res.itChinese->second) <<"\n";
 		}
 		cout <<"共" <<vecChineseBlank.size() <<"个，是否剔除空白符，输入非空则是: ";
 		if(CinGetLineJudgeBlank()) {
 			//更改空白符
 			for(auto &res: vecChineseBlank) {
 				for(auto &idx: res.itChinese->second) {
-					auto word = *idx;
-					word.chinese = res.strChange;
-					idx.Modify(word);
+					idx->chinese = res.strChange;
 					setSave.insert(idx.itList->first);
 				}
 			}
-			cout <<"以已剔除全部空白符";
+			cout <<"以已剔除空白符";
 			cin >>endl;
 			//更新检查结果
 			htbBstVec = lbdCheck();
@@ -763,25 +765,27 @@ void ChoiceRegularize(const string &curName, ListNameSet &setSave)
 	}
 	//再进行中文不一致检查
 	cout <<"检查到的中文不一致情况有:\n";
-	vector<Word> vecLeadTemp;//记录不一致结果
+	bool bFind = false;
+	auto &listTemp = g_mapWord.at(TEMP_LIST_NAME);
 	for(auto &prEnglish: htbBstVec) {
 		//若找到不一致的
 		if(prEnglish.second.size()>1) {
+			if(!bFind) {
+				bFind = true;
+				listTemp.clear();
+			}
 			cout <<TAB_BLANK <<prEnglish.first <<"\n";
 			for(auto &prChinese: prEnglish.second) {
 				cout <<prChinese.first <<OUT_BLANK
-					<<PrintItemFindIndexVector(prChinese.second) <<"\n";
+					<<PrintItemIndexVector(prChinese.second) <<"\n";
 			}
-			vecLeadTemp.emplace_back(prEnglish.first, prEnglish.second.begin()->first);
+			listTemp.emplace_back(prEnglish.first, prEnglish.second.begin()->first);
 		}
 	}
-	//若非空则导入temp
-	if(!vecLeadTemp.empty()) {
-		auto &listTemp = g_mapWord.at(TEMP_LIST_NAME);
-		listTemp.Assign(make_move_iterator(vecLeadTemp.begin()),
-			make_move_iterator(vecLeadTemp.end()));
+
+	if(bFind) {
 		setSave.insert(TEMP_LIST_NAME);
-		cout <<"共" <<listTemp.Size() <<"个，已存入" TEMP_LIST_NAME "中";
+		cout <<"共" <<listTemp.size() <<"个，已存入" TEMP_LIST_NAME "中";
 	}
 	else
 		cout <<"（空）";
@@ -983,7 +987,7 @@ void ChoiceAdInput(const string &curName, ListNameSet &setSave)
 void ChoiceOutput(const string &curName, ListNameSet &setSave)
 {
 	regex rgxOutput;
-	vector<LibraryType::iterator> vecListOutput;
+	vector<ListType::iterator> vecListOutput;
 	cout <<"输入导出词汇表正则，全词匹配，空则返回: \n";
 	if(!CinGetRegex(rgxOutput))
 		return;
@@ -1253,7 +1257,7 @@ void ChoicePlan(const string &curName, ListNameSet &setSave)
 //调试用，存储所有文件
 void DebugSaveAll()
 {
-	auto lbd = [](LibraryType::iterator it)-> const string & {
+	auto lbd = [](ListType::iterator it)-> const string & {
 		return it->first;
 	};
 	ListNameSet setSave(TieDerefIterWrapper(g_mapWord.begin(), lbd),
@@ -1275,7 +1279,7 @@ int main()
 		string choice;
 		cout <<"\n"
 			<<"当前共有词汇表: " <<g_mapWord.size() <<"\n"
-			<<"当前词汇表为: " <<curName <<"，共有单词: " <<g_mapWord.at(curName).Size() <<"\n"
+			<<"当前词汇表为: " <<curName <<"，共有单词: " <<g_mapWord.at(curName).size() <<"\n"
 			<<"输入help查看操作选项\n"
 			<<"输入exit，退出\n";
 
